@@ -56,7 +56,7 @@ export interface PendingPayment {
   id: string;
   status: 'pending_payment' | 'expired';
   paymentAmount: number;
-  paymentProvider: 'sms' | 'tezcheck';
+  paymentProvider: 'sms' | 'hamyon';
   paymentReview: boolean;
   title: string;
   uniqueAmount: number;
@@ -233,9 +233,10 @@ export const api = {
   buy: (productId: string) => post<PaymentInstructions>('purchases', { productId }),
   transactionStatus: (id: string) =>
     call<{
-      paymentProvider?: 'sms' | 'tezcheck';
-      paymentUrl?: string | null;
+      paymentProvider?: 'sms' | 'hamyon';
       paymentAmount?: number;
+      basePrice?: number;
+      productId?: string;
       paymentReview?: boolean;
       status: 'pending_payment' | 'paid' | 'expired' | 'cancelled' | 'refunded' | 'completed';
       title: string;

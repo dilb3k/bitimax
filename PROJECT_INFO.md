@@ -15,7 +15,7 @@ Platforma ikki turdagi savdoni qo‘llaydi:
 | Ochiq e’lon — `public` | Katalogda ko‘rinadi, xaridor qidirib topib sotib oladi. |
 | Yopiq bitim — `private` | Tomonlar oldindan kelishgan bo‘ladi; sotuvchi ulashadigan maxsus kod orqali bitim ochiladi. Katalogga chiqmaydi. |
 
-Hisob-kitoblar UZSda yuritiladi. Ichki ledger butun so‘mlarda, TezCheck so‘rovlari esa `amount_minor = UZS × 100` formatida ishlaydi.
+Hisob-kitoblar UZSda yuritiladi. Ichki ledger butun so‘mlarda, HamyonAPI so‘rovlari ham butun so‘mda (`amount`) ishlaydi.
 
 ## 2. Foydalanuvchilar va imkoniyatlar
 
@@ -60,7 +60,7 @@ Next.js web + server proxy             Telegraf bot
               +------------------+
 
 Tashqi integratsiyalar:
-  TezCheck / SMS gateway -> to‘lovni qabul qilish va tekshirish
+  HamyonAPI / SMS gateway -> to‘lovni qabul qilish va tekshirish
   Cloudinary            -> e’lon rasmlari
   Telegram              -> kirishni tasdiqlash va bildirishnomalar
 ```
@@ -82,7 +82,7 @@ Quyidagilar `package.json`da ko‘rsatilgan versiya oilalari; aniq dependency ve
 | Web | Next.js 14 App Router, React 18, TypeScript |
 | Dizayn | Tailwind CSS 3, PostCSS |
 | Testlar | Node.js test runner, `tsx`, alohida integratsiya skriptlari |
-| To‘lov sinovlari | Postman simulation va lokal TezCheck mock |
+| To‘lov sinovlari | Mock HamyonAPI provayderli lokal integratsiya testi (`test:hamyon`) |
 | Joylashtirish | Backend uchun Render konfiguratsiyasi; web uchun Vercel yo‘riqnomasi |
 | Container | Ikki bosqichli Dockerfile, `node:20-alpine`, root bo‘lmagan runtime user |
 
@@ -115,8 +115,6 @@ Bitimax/
 │   └── .env.example
 ├── docs/                      # Mavzuga oid batafsil hujjatlar
 ├── postman/
-│   ├── mocks/tezcheck/        # Lokal provider mock
-│   ├── simulations/tezcheck/  # Simulyatsiya va ishga tushirish konteksti
 │   └── tests/                 # Health va public policy tekshiruvlari
 └── render.yaml                # Backend deploy Blueprint’i
 ```
@@ -138,7 +136,7 @@ Yopiq bitimning ulashish kodi alohida, sakkiz belgili koddir. Uni ommaviy `listi
 ### 6.2. Xarid va escrow
 
 1. Xaridor e’lonni tanlab rezerv yaratadi; bir e’lonning bir vaqtda ikki kishiga sotilishini oldini olish uchun rezerv atomik olinadi.
-2. SMS rejimida aniq summa va karta, TezCheck rejimida hosted checkout havolasi ko‘rsatiladi.
+2. SMS rejimida aniq summa va karta, HamyonAPI rejimida ham aynan so‘ralgan summa va karta ko‘rsatiladi (5 daqiqa).
 3. Backend to‘lovni tekshiradi va mablag‘ni escrowga yozadi.
 4. Xaridor akkaunt ma’lumotlarini **ochadi**. Bu amal bitimni **tasdiqlashdan alohida**.
 5. Tasdiqlanganda yoki tegishli avtomatik muddat kelganda hisob-kitob yakunlanib, komissiya ajratiladi va sotuvchining ichki balansiga mablag‘ o‘tadi.
@@ -174,7 +172,7 @@ Amaldagi buyurtma statusi, nizo va arbitraj shartlari ham tekshiriladi. Jadvalda
 
 Refundda platforma komissiyasi xaridorga va’da qilingan summadan yana ayrilmaydi. U ushlab qolingan jarima qismidan hisoblanadi. Masalan, 100 000 so‘mlik bitimda 10% jarima bo‘lsa, xaridorga 90 000, platformaga 700, sotuvchiga 9 300 so‘m ajratiladi. To‘liq muvaffaqiyatli 100 000 so‘mlik bitimda esa 7 000 komissiya va 93 000 sotuvchi ulushi bo‘ladi.
 
-Refund ichki balansga yoziladi; bu bankka yoki TezCheck orqali avtomatik qaytarildi degani emas. Pul yechish uchun payout ishlatiladi.
+Refund ichki balansga yoziladi; bu bankka avtomatik qaytarildi degani emas. Pul yechish uchun payout ishlatiladi.
 
 Asosiy kod: [`refundEngine.ts`](backend/src/services/refundEngine.ts), [`paymentService.ts`](backend/src/services/paymentService.ts), [`ledgerService.ts`](backend/src/services/ledgerService.ts), [`payoutService.ts`](backend/src/services/payoutService.ts).
 
@@ -184,13 +182,17 @@ Asosiy kod: [`refundEngine.ts`](backend/src/services/refundEngine.ts), [`payment
 
 Xaridor platforma kartasiga aynan ko‘rsatilgan summani o‘tkazadi. SMS gateway xabarni backendga yuboradi; backend uni pending tranzaksiya bilan moslashtiradi. Kiruvchi xabarlar `PaymentInbox`da saqlanadi. Mos kelmagan to‘lovlar admin ko‘rib chiqishi uchun qoladi. `PAYMENT_CARDS` bo‘sh bo‘lsa, SMS orqali normal xarid uchun qabul qiluvchi karta mavjud bo‘lmaydi.
 
-### TezCheck — `PAYMENT_PROVIDER=tezcheck`
+### HamyonAPI — `PAYMENT_PROVIDER=hamyon`
 
-Backend bill yaratadi, to‘lov havolasini saqlaydi va provider holatini qayta so‘rab tekshiradi. Request/webhook imzolari, idempotency va takroriy eventlar nazorati mavjud. Real escrow uchun `paid=true`, `payment.state=succeeded`, live muhit, summa, valyuta va reference mosligi talab qilinadi. Test to‘lovi real balansni to‘ldirmaydi.
+[hamyon-api.uz](https://hamyon-api.uz) HUMO/UZCARD kartaga tushgan to‘lovni summa bo‘yicha aniqlaydi. Do‘kon: Bitimax (`shop_id=219`).
 
-Webhook qabul qilinganiga javob qaytishi to‘lov tasdiqlanganini bildirmaydi: event saqlanadi, so‘ng provider orqali reconciliation bajariladi. Noaniq holatda rezerv saqlanishi mumkin; timeout ko‘rindi deb mahsulot darhol qayta sotuvga chiqmaydi.
-
-Provider refund/chargeback holatlari operator ko‘rigiga yuboriladi. TezCheck refund/payout API’si bilan avtomatik bank qaytarishi ushbu integratsiyaga kiritilmagan. To‘liq tavsif: [`docs/TEZCHECK.md`](docs/TEZCHECK.md).
+- Xarid: backend `POST /payment/create` (form-urlencoded: `shop_id`, `shop_key`, `amount`, `order_id`=tranzaksiya ID) chaqiradi; javobdagi `payment_id`, `card`, `expire_at` saqlanadi. To‘lov 300 soniya yashaydi.
+- **Bir xil summa cheklovi:** bir do‘konda bir xil summali ikkita ochiq to‘lov bo‘lmaydi. Shuning uchun so‘raladigan summa `narx + offset` (0, 1, 2, …) bo‘ladi; xaridorga aynan shu summa ko‘rsatiladi. Narx, komissiya va ledger doim `basePrice` bo‘yicha qoladi (`hamyonAmount` alohida saqlanadi). Mahalliy himoya: `uniqueAmount` bo‘yicha partial unique indeks.
+- Callbacklar: `POST /api/payments/hamyon/prepare` (faqat qayd, hech narsa bajarmaydi) va `POST /api/payments/hamyon/complete` (`paid` / `cancel`). `sign = md5(shop_id + payment_id + amount + shop_key)`, timing-safe tekshiriladi; `shop_id`, `payment_id`, `order_id`, summa ham tranzaksiya bilan solishtiriladi.
+- Idempotentlik: `paid` atomik (`pending_payment → paid` + escrow + ledger bitta Mongo tranzaksiyada); takroriy/parallel callbacklar 200 qaytaradi, ikki marta escrow yaratmaydi. `hamyonPaymentId` va `hamyonOrderId` unique.
+- Muddati o‘tgan/bekor qilingan buyurtmaga kelgan `paid` avtomatik bajarilmaydi — `paymentReview` + admin xabari (qo‘lda hal qilinadi).
+- Skedyuler provayderdan holat so‘ramaydi; faqat callback kelmagan holat uchun 2 daqiqalik imtiyozdan keyin buyurtmani yopadi va tasdiq xabarlarini qayta yuboradi.
+- `/payment/status` va `/payment/cancel` ishlatilmaydi (parametrlari hujjatda aniq yozilmagan). Refund/payout provayder orqali emas, ichki balans orqali.
 
 ## 9. Kirish va xavfsizlik
 
@@ -232,7 +234,7 @@ Koddagi himoyalar:
 | `BotSession` | MongoDBda saqlanadigan bot sessiyalari |
 | `LoginRequest` | Web–Telegram pairing, tasdiqlash va bir martalik consumption |
 | `Sequence` | E’lon kodlari uchun atomik hisoblagich |
-| `TezcheckEvent` | Provider eventlari, deduplikatsiya va ko‘rib chiqish holati |
+| `Transaction.hamyon*` | `hamyonPaymentId`, `hamyonOrderId`, `hamyonAmount`, `hamyonCard`, callback holati |
 
 Asosiy holatlar:
 
@@ -322,7 +324,7 @@ Backend `Authorization: Bearer <session>` talab qiladi; browser uchun bu sarlavh
 | `POST /payouts` | Pul yechish so‘rovi |
 | `POST /uploads` | JPEG, PNG yoki WEBP rasm; raw body, 5 MB limit |
 
-Xarid javobida transaction ID, provider, payment URL, summa, mahsulot, muddat va kerak bo‘lsa karta ma’lumotlari bor. SMSda aynan `uniqueAmount`ga amal qilinadi; TezCheck checkout bazaviy narx bilan yaratiladi. Bular holat o‘zgartiruvchi amallar, oddiy ma’lumot olish so‘rovlari emas.
+Xarid javobida transaction ID, provider, summa (HamyonAPI’da aniq so‘ralgan summa), mahsulot, muddat va kerak bo‘lsa karta ma’lumotlari bor. SMSda aynan `uniqueAmount`ga amal qilinadi; TezCheck checkout bazaviy narx bilan yaratiladi. Bular holat o‘zgartiruvchi amallar, oddiy ma’lumot olish so‘rovlari emas.
 
 ### Ichki va webhook route’lari
 
@@ -332,7 +334,7 @@ Xarid javobida transaction ID, provider, payment URL, summa, mahsulot, muddat va
 | `/api/escrow` | `x-internal-key`; escrow ro‘yxati, tafsiloti, confirm/refund |
 | `POST /api/sms-webhook` | SMS gateway siri va ixtiyoriy sender allowlist |
 | `GET /api/sms-webhook/health` | SMS webhook yordamchi health route’i |
-| `POST /api/tezcheck/webhook` | Raw body asosidagi provider imzosi |
+| `POST /api/payments/hamyon/prepare`, `/complete` | HamyonAPI callbacklari, md5 `sign` bilan |
 | `POST /api/telegram/webhook` | Telegram webhook secret token |
 
 Internal key frontend bundle yoki `NEXT_PUBLIC_*` o‘zgaruvchilariga kiritilmaydi. Sessiya yo‘qligi, ruxsat yetishmasligi, noto‘g‘ri ID/body va rate limit alohida xatolar keltiradi; muvaffaqiyatsiz javobni to‘lov yakunlandi deb talqin qilish mumkin emas.
@@ -348,7 +350,7 @@ Asosiy shablonlar: [`backend/.env.example`](backend/.env.example), [`web/.env.ex
 | Sirlar | `WEBHOOK_SECRET`, `INTERNAL_API_KEY`, `ENCRYPTION_KEY`, `SESSION_SECRET` |
 | Web sessiya | `WEB_SESSION_DAYS`, `LOGIN_REQUEST_MINUTES` |
 | To‘lov | `PAYMENT_PROVIDER`, `PAYMENT_CARDS`, `PAYMENT_WINDOW_MINUTES`, `SMS_ALLOWED_SENDERS` |
-| TezCheck | `TEZCHECK_API_KEY`, `TEZCHECK_CASH_DESK_CODE`, `TEZCHECK_WEBHOOK_SECRET`, `TEZCHECK_BASE_URL`, `TEZCHECK_PROVIDER_CODES` |
+| HamyonAPI | `HAMYON_BASE_URL`, `HAMYON_SHOP_ID`, `HAMYON_SHOP_KEY` (maxfiy), ixtiyoriy `HAMYON_MAX_AMOUNT_OFFSET` |
 | Moliyaviy siyosat | `PLATFORM_COMMISSION`, `REFUND_TIERS`, `AUTO_RELEASE_HOURS`, `UNREVEALED_GRACE_HOURS`, `MIN_PAYOUT_AMOUNT`, `PAYOUT_FEE_FLAT`, `REFUND_ABUSE_THRESHOLD` |
 | Saqlash va rasmlar | `CREDENTIAL_RETENTION_DAYS`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `MAX_PRODUCT_IMAGES` |
 | Web va runtime | `SITE_URL`, `CORS_ORIGINS`, `JOBS_ENABLED`, `ALLOW_SELF_PURCHASE` |
@@ -420,7 +422,7 @@ Web odatda `http://localhost:3000`da ochiladi. Rootdan umumiy `npm run dev` buyr
 | `npm run migrate` | Eski ma’lumotlarni v2 sxemasiga ko‘chirish |
 | `npm run seed` | Seed skripti; ishlatishdan oldin target DB va kodni tekshirish kerak |
 | `npm run e2e` | Alohida e2e skripti; muhit va yon ta’sirlarini oldindan ko‘rish kerak |
-| `npm run test:tezcheck` | Lokal provider + DB integratsiya testi |
+| `npm run test:hamyon` | Mock HamyonAPI + DB integratsiya testi |
 | `npm run test:web` | Web proxy + backend regressiyasi |
 | `npm run test:marketplace` | Marketplace, kodlar va sotuvchi oqimi regressiyasi |
 
@@ -440,13 +442,10 @@ Integratsiya testlarining alohida shartlari:
 
 - `test:marketplace`: lokal MongoDB `127.0.0.1:27920`; vaqtinchalik `marketplace_test_*` bazasi yaratiladi va tozalanadi.
 - `test:web`: `127.0.0.1:27919`da `tezchecktest` replica set, 3000-portda Next dev va `BACKEND_URL=http://localhost:3001`. Test backendni 3001-portda o‘zi ochadi; bu port bo‘sh bo‘lishi kerak.
-- `test:tezcheck`: shu 27919-portdagi replica set va 4919-portda Postman simulation kerak. Yo‘riqnoma: [`tezcheck.context.md`](postman/simulations/tezcheck/tezcheck.context.md).
+- `test:hamyon`: shu 27919-portdagi replica set kerak; provayder ichki mock (4920-port), real so‘rov yuborilmaydi.
 
 Simulyatsiyani repo ildizidan boshlash:
 
-```bash
-postman simulation run postman/simulations/tezcheck/tezcheck.sim.yaml --port 4919 --output ndjson
-```
 
 Mock provider tasdiqlagan rasmiy sandbox emas; loyiha ichidagi kontraktni sinash vositasidir. Lokal test natijasi haqiqiy Click/Payme to‘lovi, production webhook yoki brauzer dizaynini tekshirgan hisoblanmaydi. Ushbu hujjat tayyorlanayotganda dastur testlari qayta ishga tushirilmagan.
 
@@ -456,7 +455,7 @@ Mock provider tasdiqlagan rasmiy sandbox emas; loyiha ichidagi kontraktni sinash
 
 | Vazifa | Davriylik |
 | --- | --- |
-| TezCheck to‘lovlarini tiklash va tekshirish | 1 daqiqa |
+| HamyonAPI to‘lov tasdiqlarini qayta yuborish | 1 daqiqa |
 | Muddati o‘tgan pending tranzaksiyalarni tugatish | 1 daqiqa |
 | Muddati kelgan escrowlarni hisob-kitob qilish | 5 daqiqa |
 | Mos kelmagan SMS to‘lovlari haqida eslatish | 15 daqiqa |
@@ -479,7 +478,7 @@ Bu faylning mavjudligi real Render servisi aynan shu holatda ishlayotganini tasd
 
 Kod va hujjatlardagi web manzili `https://web-three-eosin-46.vercel.app`, backend misoli `https://bitimax-bot.onrender.com`. Ular konfiguratsiya havolalari; ushbu hujjat ularning onlayn ekanini tasdiqlamaydi.
 
-`render.yaml` barcha yangi `.env.example` o‘zgaruvchilarini sanamaydi. TezCheck va Cloudinary kabi integratsiyalar tanlansa, ular uchun env qiymatlarini ham alohida sozlash zarur.
+`render.yaml` barcha yangi `.env.example` o‘zgaruvchilarini sanamaydi. HamyonAPI va Cloudinary kabi integratsiyalar tanlansa, ular uchun env qiymatlarini ham alohida sozlash zarur.
 
 Eski bazani v2ga ko‘chirishda avval backup olinadi. Migratsiya eski transaction TTL indeksini olib tashlash, credentiallarni shifrlash, escrow muddatlarini to‘ldirish, referal kodlar va boshlang‘ich ledger yozuvlarini yaratish hamda reconciliation bilan shug‘ullanadi. Bu ma’lumotlarni o‘zgartiruvchi amal, oddiy ishga tushirish komandasi emas. Joriy server startup’i esa eski e’lonlarga yetishmayotgan `listingCode`larni backfill qiladi.
 
@@ -491,7 +490,7 @@ Eski bazani v2ga ko‘chirishda avval backup olinadi. Migratsiya eski transactio
 | Har bir e’lon avval admin tasdig‘ini kutadi | Joriy yaratish oqimi tasdiqdan so‘ng darhol `active` e’lon chiqaradi; moderatsiya modellari/handlerlari saqlangan. |
 | Backend faqat long polling bilan ishlaydi | Webhook rejimi ham bor, Render URL asosida avtomatik tanlanishi mumkin. |
 | Render Docker va Starter bilan sozlangan | Hozirgi Blueprint Node runtime va Free planni ko‘rsatadi; Dockerfile alohida variant. |
-| Faqat SMS to‘lovi mavjud | TezCheck kodi va lokal simulyatsiyasi ham mavjud; faol provider env orqali tanlanadi. |
+| Faqat SMS to‘lovi mavjud | HamyonAPI integratsiyasi ham mavjud; faol provider `PAYMENT_PROVIDER` orqali tanlanadi. |
 | Refund darhol kartaga qaytadi | Refund ichki balansga yoziladi; bankka yechish alohida payout. |
 | `/health` barcha integratsiyalarni tekshiradi | Bu faqat process liveness javobi. |
 | Modelda til bor — tarjima to‘liq | Til maydonlari mavjud, barcha ekranlar tarjimasi alohida tekshiriladi. |
@@ -502,12 +501,12 @@ Eski `docs/TZ-v2.md`dagi roadmap, test sonlari, daromad prognozlari va “bajari
 
 | Belgisi | Avval tekshiriladigan joy |
 | --- | --- |
-| Backend startda to‘xtaydi | Mongo ulanishi, production sirlar, TezCheck env validatsiyasi |
+| Backend startda to‘xtaydi | Mongo ulanishi, production sirlar, HamyonAPI env validatsiyasi |
 | Katalog ishlaydi, lekin moliyaviy amal xato beradi | Mongo replica set va transaction qo‘llovi |
 | Telegram orqali login tugamaydi | `BOT_TOKEN`, bot username, webhook/polling, pairing muddati |
 | Rasm yuklanmaydi | Cloudinary env, fayl turi, 5 MB limit va e’lon rasm limiti |
 | SMS to‘lovi topilmaydi | `PaymentInbox`, aniq summa, webhook siri, sender va to‘lov muddati |
-| TezCheck to‘lovi ko‘rib chiqishda qoladi | `Transaction.paymentReview`, `TezcheckEvent.review`, provider holati va scheduler |
+| HamyonAPI to‘lovi ko‘rib chiqishda qoladi | `Transaction.paymentReview` (`paid_after_expired`, `paid_but_reservation_lost`), admin xabari |
 | Avtomatik release kechikadi | Process faolmi, `JOBS_ENABLED`, servis uyqusi, job loglari |
 | Credential ochilmaydi | Saqlashda ishlatilgan `ENCRYPTION_KEY` va retention holati |
 | Balanslar mos emas | Ledger reconciliation va audit yozuvlari |
@@ -517,7 +516,6 @@ Eski `docs/TZ-v2.md`dagi roadmap, test sonlari, daromad prognozlari va “bajari
 
 - [`docs/MARKETPLACE-FLOW.md`](docs/MARKETPLACE-FLOW.md) — e’lon yaratish, IDlar, bot katalogi va bekor qilishning keyingi oqimi.
 - [`docs/WEB-EXPERIENCE.md`](docs/WEB-EXPERIENCE.md) — web kabineti, foydalanuvchi yo‘llari va tekshiruv izohlari.
-- [`docs/TEZCHECK.md`](docs/TEZCHECK.md) — provider kontrakti, hisob-kitob va tiklash cheklovlari.
 - [`docs/DEPLOY.md`](docs/DEPLOY.md) — tarixiy deploy/migratsiya qo‘llanmasi; amaldagi Blueprint bilan farqlarni yuqoridagi bo‘limdan ko‘ring.
 - [`docs/TZ-v2.md`](docs/TZ-v2.md) — dastlabki v2 talablar, moliyaviy model va tarixiy roadmap.
 - [`backend/src/config/index.ts`](backend/src/config/index.ts) — amaldagi konfiguratsiya standartlari.

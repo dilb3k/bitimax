@@ -13,8 +13,7 @@ export interface ITransaction extends Document {
   /** Which of the configured cards the buyer was told to pay into. */
   cardId?: string;
 
-  /** 'tezcheck' is legacy: kept only so historical rows stay valid. No code path creates it. */
-  paymentProvider?: 'sms' | 'hamyon' | 'tezcheck';
+  paymentProvider?: 'sms' | 'hamyon';
   /** HamyonAPI: the provider's payment id, our order_id (== _id), exact requested amount and card. */
   hamyonPaymentId?: string;
   hamyonOrderId?: string;
@@ -52,7 +51,7 @@ const TransactionSchema = new Schema<ITransaction>(
     uniqueAmount: { type: Number, required: true, min: 0 },
     cardId: { type: String },
 
-    paymentProvider: { type: String, enum: ['sms', 'hamyon', 'tezcheck'], default: 'sms' },
+    paymentProvider: { type: String, enum: ['sms', 'hamyon'], default: 'sms' },
     hamyonPaymentId: String,
     hamyonOrderId: String,
     hamyonAmount: { type: Number, min: 1 },

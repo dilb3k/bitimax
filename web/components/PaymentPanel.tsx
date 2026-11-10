@@ -95,6 +95,29 @@ export function PaymentPanel({ transactionId }: { transactionId: string }) {
     );
   }
 
+  if (status.status === "expired" || status.status === "cancelled") {
+    return (
+      <div className="surface p-6 sm:p-8">
+        <Notice tone="warn">
+          To‘lov muddati tugadi yoki bekor qilindi. Bandlik bekor qilindi — pul
+          o‘tkazilmagan bo‘lsa, hech narsa yechilmaydi. Pul o‘tkazgan bo‘lsangiz,
+          qayta to‘lamang va buyurtma raqami bilan yordam xizmatiga yozing.
+        </Notice>
+        {status.productId && (
+          <Link href={`/sotib-olish/${status.productId}`} className="btn-accent mt-5">
+            Qayta to‘lash
+          </Link>
+        )}
+        <Link href="/katalog" className="btn-ghost ml-2 mt-5">
+          Katalogga qaytish
+        </Link>
+        <p className="mt-4 break-all font-mono text-xs text-muted">
+          Buyurtma: {transactionId}
+        </p>
+      </div>
+    );
+  }
+
   if (status.status !== "pending_payment") {
     return (
       <div className="surface p-6 sm:p-8">
@@ -120,99 +143,12 @@ export function PaymentPanel({ transactionId }: { transactionId: string }) {
     );
   }
 
-  if (status.paymentProvider === "tezcheck") {
-    return (
-      <div className="space-y-4">
-        <ol
-          aria-label="To‘lov bosqichlari"
-          className="grid grid-cols-3 gap-2 text-center text-xs"
-        >
-          <li className="rounded-lg bg-ok/10 py-3 text-ok">1. Band qilindi</li>
-          <li
-            aria-current="step"
-            className="rounded-lg bg-accent-soft py-3 font-semibold text-accent"
-          >
-            2. To‘lov
-          </li>
-          <li className="rounded-lg bg-raised py-3 text-muted">
-            3. Tekshirish
-          </li>
-        </ol>
-        <div className="surface overflow-hidden">
-          <div className="border-b border-line bg-raised/50 p-6">
-            <p className="eyebrow">
-              <Icon name="shield" width={16} /> KAFILLI XARID
-            </p>
-            <h2 className="mt-3 text-lg font-semibold">{status.title}</h2>
-            <p className="tnum mt-4 text-4xl font-bold">
-              {status.paymentAmount === undefined
-                ? "Summa aniqlanmoqda"
-                : formatUzs(status.paymentAmount)}
-            </p>
-            <p className="mt-2 text-xs text-muted">
-              To‘lov TezCheck sahifasida amalga oshiriladi
-            </p>
-          </div>
-          <div className="space-y-4 p-6">
-            {status.paymentReview ? (
-              <Notice tone="warn">
-                To‘lov tekshirilmoqda. Qayta pul o‘tkazmang. Natija kelishi
-                bilan shu sahifada ko‘rinadi.
-              </Notice>
-            ) : status.paymentUrl ? (
-              <>
-                <a
-                  href={status.paymentUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-accent w-full"
-                >
-                  To‘lovga o‘tish <Icon name="arrow" />
-                </a>
-                <p className="text-center text-xs text-muted">
-                  To‘lov yangi oynada ochiladi. Tugatgach shu yerga qayting.
-                </p>
-              </>
-            ) : (
-              <Notice tone="info">
-                To‘lov havolasi tayyorlanmoqda. Holat avtomatik yangilanadi.
-              </Notice>
-            )}
-            <div className="flex items-center justify-between gap-3 border-t border-line pt-4 text-sm">
-              <span className="flex items-center gap-2 text-muted">
-                <Icon name="clock" width={17} /> Bandlik muddati
-              </span>
-              <Countdown to={status.expireAt} onDone={load} />
-            </div>
-            <button
-              type="button"
-              onClick={load}
-              disabled={checking}
-              className="btn-ghost w-full text-sm"
-            >
-              {checking && <Spinner size={16} />}
-              {checking ? "Tekshirilmoqda…" : "To‘lov holatini tekshirish"}
-            </button>
-            {error && <Notice tone="warn">{error}</Notice>}
-          </div>
-        </div>
-        <p className="text-center text-xs leading-6 text-muted">
-          To‘lov tasdiqlangach, akkauntni tekshirish bosqichi ochiladi.{" "}
-          <a
-            className="text-accent underline underline-offset-4"
-            href="https://t.me/bitimax_admin"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Yordam kerakmi?
-          </a>
-        </p>
-        <p className="break-all text-center font-mono text-[11px] text-faint">
-          Buyurtma: {transactionId}
-        </p>
-      </div>
-    );
-  }
+  // HamyonAPI: the exact requested amount (price + a few so'm). SMS: the unique matching amount.
+  const payAmount =
+    status.paymentProvider === "hamyon"
+      ? status.paymentAmount ?? status.uniqueAmount
+      : status.uniqueAmount;
+  const extra = payAmount - (status.basePrice ?? payAmount);
 
   return (
     <div className="space-y-4">
@@ -242,13 +178,17 @@ export function PaymentPanel({ transactionId }: { transactionId: string }) {
         </p>
         <div className="mt-2 flex items-center justify-between gap-3">
           <p className="tnum font-mono text-3xl font-bold text-ink">
-            {status.uniqueAmount}
+            {payAmount}
           </p>
-          <CopyButton value={String(status.uniqueAmount)} />
+          <CopyButton value={String(payAmount)} />
         </div>
         <p className="mt-2 text-xs leading-relaxed text-warn">
           Summaning oxirgi raqamlari aynan sizning buyurtmangizni aniqlaydi.
           Boshqa summa o‘tkazsangiz, to‘lov avtomatik tanilmaydi.
+          {extra > 0 && (
+            <> Narx {formatUzs(status.basePrice ?? 0)}; {extra} so‘m qo‘shimcha
+            to‘lovni aniqlash uchun kerak.</>
+          )}
         </p>
       </div>
 
@@ -262,8 +202,8 @@ export function PaymentPanel({ transactionId }: { transactionId: string }) {
             <CopyButton value={status.card.number} />
           </div>
           <dl className="mt-3 space-y-1.5 border-t border-line pt-3 text-sm">
-            <Row label="Egasi" value={status.card.holder} />
-            <Row label="Bank" value={status.card.bank} />
+            {status.card.holder && <Row label="Egasi" value={status.card.holder} />}
+            {status.card.bank && <Row label="Bank" value={status.card.bank} />}
             <Row
               label="Muddat"
               value={`${formatDateTime(status.expireAt)} gacha`}
@@ -278,7 +218,7 @@ export function PaymentPanel({ transactionId }: { transactionId: string }) {
 
       <div className="flex items-center gap-2.5 rounded-lg border border-line bg-raised px-4 py-3 text-sm text-muted">
         <Spinner size={16} />
-        To‘lov kutilmoqda — bank xabari kelishi bilan bu sahifa o‘zi
+        To‘lov kutilmoqda — pul tushishi bilan bu sahifa o‘zi
         yangilanadi.
       </div>
 

@@ -11,7 +11,7 @@ The website and Telegram bot share the same payment, escrow and ledger services.
 - Telegram pairing → return to the original internal page, including seller forms.
 - Cabinet: orders (active/history), listings/sales, wallet, account settings. Desktop sidebar and mobile bottom navigation share routes.
 
-Product status disables unavailable purchases. Prices for TezCheck come from the base price; SMS payments retain their exact matching amount. Payment status is authoritative on the server; the client never infers success from a redirect or countdown. A timeout warns that a write may have completed and does not automatically repeat mutations.
+Product status disables unavailable purchases. SMS and HamyonAPI payments both show the exact amount to send (HamyonAPI: price plus a few so'm so that open payments differ); accounting always uses the base price. Payment status is authoritative on the server; the client never infers success from a redirect or countdown. A timeout warns that a write may have completed and does not automatically repeat mutations.
 
 ## API additions
 
@@ -20,7 +20,7 @@ Product status disables unavailable purchases. Prices for TezCheck come from the
 | Field | Type | Meaning |
 | --- | --- | --- |
 | commission | number | Platform commission percent |
-| paymentProvider | sms / tezcheck | Active payment flow |
+| paymentProvider | sms / hamyon | Active payment flow |
 | paymentWindowMinutes | number | Reservation payment window |
 | autoReleaseHours | number | Review period after credential reveal |
 | unrevealedGraceHours | number | Grace period before unopened orders are refunded |
@@ -34,7 +34,7 @@ Logout reports failure when the backend cannot revoke sessions; it no longer sil
 
 ## Validation
 
-- Backend `npm test`: refund arithmetic, TezCheck signatures/settlement checks, credentials, SMS matching and sessions.
+- Backend `npm test`: refund arithmetic, HamyonAPI signature/client checks, credentials, SMS matching and sessions.
 - Web `npm test`: internal redirect preservation and malicious URL rejection.
 - Backend `npm run test:web`: real API routes + Next proxy, local disposable `web_test_*` database only. Run local Mongo on 27919 with replica set `tezchecktest`, and Next dev on 3000 with `BACKEND_URL=http://localhost:3001`. The test starts API port3001; no Telegram bot or external payment provider starts. Fixtures are removed in finally.
 - Public policy contract: `postman request https://bitimax-bot.onrender.com/api/products/policy --script-post-request @postman/tests/public-policy.js`.

@@ -36,7 +36,7 @@ export interface CategoryCount {
 
 export interface PublicPolicy {
   commission: number;
-  paymentProvider: 'sms' | 'tezcheck';
+  paymentProvider: 'sms' | 'hamyon';
   paymentWindowMinutes: number;
   autoReleaseHours: number;
   unrevealedGraceHours: number;
