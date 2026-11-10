@@ -1,6 +1,0 @@
-simulation: tezcheck
-routing: path
-mocks:
-  - name: tezcheck
-    routeKey: tezcheck
-    path: postman/mocks/tezcheck/config.yaml

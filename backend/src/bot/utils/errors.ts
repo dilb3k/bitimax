@@ -1,4 +1,4 @@
-import { AlreadyProcessedError, ForbiddenError, ProductUnavailableError } from '../../services/paymentService';
+import { AlreadyProcessedError, ForbiddenError, PaymentAllocationError, ProductUnavailableError } from '../../services/paymentService';
 import { ImageUploadError } from '../../services/cloudinaryService';
 
 /**
@@ -15,6 +15,9 @@ export function describeError(error: unknown): string {
   }
   if (error instanceof AlreadyProcessedError) {
     return 'ℹ️ Bu buyurtma allaqachon yopilgan — qayta ishlov berish shart emas.';
+  }
+  if (error instanceof PaymentAllocationError) {
+    return `⚠️ ${error.message}`;
   }
   if (error instanceof ForbiddenError) {
     return `❌ ${(error as Error).message || 'Ruxsat yo‘q'}`;

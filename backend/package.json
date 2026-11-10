@@ -13,7 +13,7 @@
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "e2e": "tsx src/scripts/e2e.ts",
-    "test:tezcheck": "node --import tsx src/scripts/tezcheck-integration.ts",
+    "test:hamyon": "node --import tsx src/scripts/hamyon-integration.ts",
     "test:web": "node --import tsx src/scripts/web-regression.ts",
     "test:marketplace": "node --import tsx src/scripts/marketplace-regression.ts"
   },

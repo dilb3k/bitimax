@@ -161,13 +161,13 @@ async function main() {
     );
     await Transaction.updateOne(
       { _id: id },
-      { $set: { paymentProvider: "tezcheck", paymentReview: "fixture" } },
+      { $set: { paymentProvider: "hamyon", hamyonAmount: 150001, paymentReview: "fixture" } },
     );
     orders = await request("/api/me/orders");
     check(
-      orders.data.pending[0].paymentAmount === 150000 &&
+      orders.data.pending[0].paymentAmount === 150001 &&
         orders.data.pending[0].paymentReview === true,
-      "TezCheck pending amount uses base price and flags review",
+      "HamyonAPI pending amount is the exact requested amount and flags review",
     );
     await Transaction.updateOne(
       { _id: id },

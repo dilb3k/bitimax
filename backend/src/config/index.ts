@@ -120,12 +120,15 @@ export const config = {
   refundTiers: parseRefundTiers(),
   paymentCards: parsePaymentCards(),
   paymentProvider: process.env.PAYMENT_PROVIDER || 'sms',
-  tezcheck: {
-    apiKey: process.env.TEZCHECK_API_KEY || '',
-    cashDeskCode: process.env.TEZCHECK_CASH_DESK_CODE || '',
-    webhookSecret: process.env.TEZCHECK_WEBHOOK_SECRET || '',
-    baseUrl: process.env.TEZCHECK_BASE_URL || 'https://api.tezcheck.uz/api/merchant/v1',
-    providerCodes: (process.env.TEZCHECK_PROVIDER_CODES || 'click,payme').split(',').map(s => s.trim()).filter(Boolean),
+  hamyon: {
+    baseUrl: (process.env.HAMYON_BASE_URL || 'https://hamyon-api.uz').replace(/\/+$/, ''),
+    shopId: (process.env.HAMYON_SHOP_ID || '219').trim(),
+    // Secret: only ever read here, never serialized into a response, log line or the frontend.
+    shopKey: (process.env.HAMYON_SHOP_KEY || '').trim(),
+    // Provider-side lifetime of a payment (300 s). The real expiry comes back from /payment/create.
+    windowSeconds: 300,
+    // How many +1 so'm steps to try when an open payment already holds the same amount.
+    maxAmountOffset: num('HAMYON_MAX_AMOUNT_OFFSET', 30),
   },
 
   // How long a buyer has to transfer the unique amount before the reservation lapses.
@@ -213,7 +216,13 @@ export function safeEquals(a: string, b: string): boolean {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-if (!['sms', 'tezcheck'].includes(config.paymentProvider)) throw new Error('Invalid PAYMENT_PROVIDER');
-if (config.paymentProvider === 'tezcheck' && (!config.tezcheck.apiKey || config.tezcheck.apiKey.includes('*') || !config.tezcheck.cashDeskCode || !config.tezcheck.webhookSecret)) {
-  throw new Error('TezCheck requires full API key, cash desk code and webhook secret');
+if (!['sms', 'hamyon'].includes(config.paymentProvider)) throw new Error('Invalid PAYMENT_PROVIDER (use sms or hamyon)');
+if (config.paymentProvider === 'hamyon') {
+  if (!/^\d+$/.test(config.hamyon.shopId) || !config.hamyon.shopKey) {
+    throw new Error('HamyonAPI requires HAMYON_SHOP_ID and HAMYON_SHOP_KEY');
+  }
+  const url = new URL(config.hamyon.baseUrl);
+  if (url.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && ['localhost', '127.0.0.1'].includes(url.hostname))) {
+    throw new Error('HAMYON_BASE_URL must use HTTPS');
+  }
 }

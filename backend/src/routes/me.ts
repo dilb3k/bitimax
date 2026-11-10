@@ -14,6 +14,7 @@ import {
   paymentService,
   AlreadyProcessedError,
   ProductUnavailableError,
+  PaymentAllocationError,
   ForbiddenError,
 } from '../services/paymentService';
 import { payoutService, InsufficientBalanceError } from '../services/payoutService';
@@ -54,6 +55,7 @@ function actor(req: Request) {
 function fail(res: Response, error: any, fallback = 'Xatolik yuz berdi') {
   if (error instanceof AlreadyProcessedError) return res.status(409).json({ error: error.message });
   if (error instanceof ProductUnavailableError) return res.status(409).json({ error: 'Mahsulot band yoki sotilgan' });
+  if (error instanceof PaymentAllocationError) return res.status(503).json({ error: error.message });
   if (error instanceof ForbiddenError) return res.status(403).json({ error: 'Ruxsat yo‘q' });
   if (error instanceof InsufficientBalanceError) return res.status(400).json({ error: 'Balansda yetarli mablag‘ yo‘q' });
   if (error instanceof ImageUploadError) return res.status(400).json({ error: error.message });
@@ -160,8 +162,7 @@ router.post('/purchases', writeLimiter, async (req: Request, res: Response) => {
     res.json({
       transactionId: String(transaction._id),
       paymentProvider: transaction.paymentProvider,
-      paymentUrl: transaction.paymentReview ? null : transaction.paymentUrl || null,
-      paymentAmount: transaction.basePrice,
+      paymentAmount: uniqueAmount,
       product: { id: String(product._id), title: product.title, price: product.price },
       uniqueAmount,
       expiresAt,
@@ -278,7 +279,7 @@ router.get('/orders', async (req: Request, res: Response) => {
         status: t.status,
         title: (t.productId as any)?.title || 'Mahsulot',
         uniqueAmount: t.uniqueAmount,
-        paymentAmount: t.paymentProvider === 'tezcheck' ? t.basePrice : t.uniqueAmount,
+        paymentAmount: t.paymentProvider === 'hamyon' ? t.hamyonAmount ?? t.uniqueAmount : t.uniqueAmount,
         paymentProvider: t.paymentProvider,
         paymentReview: Boolean(t.paymentReview),
         createdAt: t.createdAt,
@@ -311,23 +312,30 @@ router.get('/transactions/:id/status', validateObjectId(), async (req: Request, 
     // The destination card is re-served while (and only while) the transfer is still owed, so
     // a buyer who closed the tab can finish paying without opening a second order.
     const card =
-      transaction.status === 'pending_payment' && transaction.paymentProvider !== 'tezcheck'
+      transaction.status === 'pending_payment' && transaction.paymentProvider === 'sms'
         ? config.paymentCards.find((c) => c.id === transaction.cardId) || config.paymentCards[0]
+        : null;
+    const hamyonCard =
+      transaction.status === 'pending_payment' && transaction.paymentProvider === 'hamyon' && transaction.hamyonCard
+        ? { number: transaction.hamyonCard, masked: maskCard(transaction.hamyonCard), holder: '', bank: '' }
         : null;
 
     res.json({
       status: transaction.status,
       paymentProvider: transaction.paymentProvider,
-      paymentUrl: transaction.status === 'pending_payment' && !transaction.paymentReview ? transaction.paymentUrl || null : null,
-      paymentAmount: transaction.basePrice,
+      // The exact amount to send (HamyonAPI: price plus a few so'm to keep open payments distinct).
+      paymentAmount: transaction.paymentProvider === 'hamyon' ? transaction.hamyonAmount : transaction.basePrice,
+      basePrice: transaction.basePrice,
+      productId: String(transaction.productId && (transaction.productId as any)._id || transaction.productId),
+      cancelReason: transaction.status === 'expired' || transaction.status === 'cancelled' ? transaction.cancelReason || null : null,
       paymentReview: Boolean(transaction.paymentReview),
       title: (transaction.productId as any)?.title || 'Mahsulot',
       uniqueAmount: transaction.uniqueAmount,
       expireAt: transaction.expireAt,
       orderId: hold ? String(hold._id) : null,
-      card: card
+      card: hamyonCard || (card
         ? { number: card.number, masked: maskCard(card.number), holder: card.holder, bank: card.bank }
-        : null,
+        : null),
     });
   } catch (error: any) {
     return fail(res, error);

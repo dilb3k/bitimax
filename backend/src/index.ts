@@ -1,4 +1,4 @@
-import { tezcheckWebhook } from './routes/tezcheckWebhook';
+import { hamyonWebhook } from './routes/hamyonWebhook';
 import express, { NextFunction, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -28,7 +28,7 @@ app.use(
     allowedHeaders: ['Content-Type', 'Authorization', 'x-internal-key'],
   })
 );
-app.use(tezcheckWebhook); // Must precede JSON parsing: provider signs raw bytes.
+app.use(hamyonWebhook); // Own body parsers (urlencoded + JSON) and rate limit.
 app.use(express.json({ limit: '100kb' }));
 
 app.post('/api/telegram/webhook', telegramWebhook);

@@ -20,7 +20,6 @@ import {
 } from './refundEngine';
 import { ledgerService, accounts } from './ledgerService';
 import { config } from '../config';
-import { toMinor } from './tezcheckClient';
 import { RefundQuote } from '../types';
 
 export class AlreadyProcessedError extends Error {
@@ -34,6 +33,13 @@ export class ProductUnavailableError extends Error {
   constructor(message = 'Product is not available for purchase') {
     super(message);
     this.name = 'ProductUnavailableError';
+  }
+}
+
+export class PaymentAllocationError extends Error {
+  constructor(message = 'To‘lovni hozir yaratib bo‘lmadi, birozdan keyin qayta urinib ko‘ring') {
+    super(message);
+    this.name = 'PaymentAllocationError';
   }
 }
 
@@ -63,16 +69,24 @@ export class PaymentService {
    * conditional update, so exactly one caller can win it.
    */
   async createPaymentTransaction(productId: string, buyerId: string) {
-    const existing = await Transaction.findOne({ productId, buyerId, status: 'pending_payment', paymentProvider: 'tezcheck' });
-    if (existing) {
-      const product = await Product.findById(productId);
-      if (!product) throw new ProductUnavailableError();
-      const { ensureTezcheckBill } = await import('./tezcheckPayments');
-      await ensureTezcheckBill(existing).catch(() => undefined);
-      return { transaction: existing, product, uniqueAmount: existing.basePrice,
-        paymentUrl: existing.paymentReview ? undefined : existing.paymentUrl, paymentProvider: 'tezcheck', expiresAt: existing.expireAt, card: null };
+    if (config.paymentProvider === 'hamyon') {
+      const existing = await Transaction.findOne({ productId, buyerId, status: 'pending_payment', paymentProvider: 'hamyon', hamyonPaymentId: { $exists: true } });
+      if (existing) {
+        if (existing.expireAt.getTime() > Date.now()) {
+          const product = await Product.findById(productId);
+          if (!product) throw new ProductUnavailableError();
+          return { transaction: existing, product, ...this.hamyonView(existing) };
+        }
+        // Window over: close it so the buyer can start a fresh payment right away.
+        const closed = await Transaction.findOneAndUpdate({ _id: existing._id, status: 'pending_payment' },
+          { $set: { status: 'expired', cancelReason: 'payment_window_lapsed' } });
+        if (closed) await this.releaseReservation(productId);
+      }
     }
-    const expireAt = new Date(Date.now() + config.paymentWindowMinutes * 60 * 1000);
+    const windowMs = config.paymentProvider === 'hamyon'
+      ? (config.hamyon.windowSeconds + 120) * 1000 // provider window + callback grace
+      : config.paymentWindowMinutes * 60 * 1000;
+    const expireAt = new Date(Date.now() + windowMs);
 
     const product = await Product.findOneAndUpdate(
       {
@@ -99,6 +113,17 @@ export class PaymentService {
       throw new ForbiddenError('O‘z mahsulotingizni sotib ololmaysiz');
     }
 
+    if (config.paymentProvider === 'hamyon') {
+      try {
+        const { openHamyonPayment } = await import('./hamyonPayments');
+        const transaction = await openHamyonPayment(product, buyerId);
+        return { transaction, product, ...this.hamyonView(transaction) };
+      } catch (err) {
+        await this.releaseReservation(String(product._id));
+        throw err;
+      }
+    }
+
     const card = pickCard();
 
     for (let attempt = 0; attempt < 10; attempt++) {
@@ -107,44 +132,32 @@ export class PaymentService {
         const transactionId = new mongoose.Types.ObjectId();
         const transaction = await Transaction.create({
           _id: transactionId,
-          tezcheckRequest: config.paymentProvider === 'tezcheck' ? JSON.stringify({
-            amount_minor: toMinor(product.price), title: `Buyurtma #${transactionId}`,
-            external_reference: String(transactionId), allowed_provider_codes: config.tezcheck.providerCodes,
-          }) : undefined,
           productId: product._id,
           buyerId,
           sellerId: product.sellerId,
           basePrice: product.price,
           expectedAmount: product.price,
           uniqueAmount,
-          cardId: config.paymentProvider === 'sms' ? card?.id : undefined,
+          cardId: card?.id,
           paymentProvider: config.paymentProvider,
           status: 'pending_payment',
           expireAt,
         });
 
-        if (config.paymentProvider === 'tezcheck') {
-          const { ensureTezcheckBill } = await import('./tezcheckPayments');
-          // A timeout may mean a bill exists remotely. Keep this order reserved for recovery.
-          await ensureTezcheckBill(transaction).catch(() => undefined);
-        }
         return {
           transaction,
           paymentProvider: transaction.paymentProvider,
-          paymentUrl: transaction.paymentUrl,
           product,
-          uniqueAmount: transaction.paymentProvider === 'tezcheck' ? transaction.basePrice : uniqueAmount,
+          uniqueAmount,
           expiresAt: expireAt,
-          card: transaction.paymentProvider !== 'tezcheck' && card
+          card: card
             ? { masked: maskCard(card.number), raw: card.number, holder: card.holder, bank: card.bank }
             : null,
         };
       } catch (err: any) {
         // E11000 = collided with another still-pending transaction's uniqueAmount; retry.
         if (err?.code === 11000) continue;
-        if (!await Transaction.exists({ productId: product._id, buyerId, status: 'pending_payment', paymentProvider: 'tezcheck' })) {
-          await this.releaseReservation(String(product._id));
-        }
+        await this.releaseReservation(String(product._id));
         throw err;
       }
     }
@@ -152,6 +165,16 @@ export class PaymentService {
     // Could not find a free amount — don't strand the listing in `reserved`.
     await this.releaseReservation(String(product._id));
     throw new Error('Could not allocate a unique payment amount, please try again');
+  }
+
+  /** What the buyer is shown for a HamyonAPI payment: the exact amount and the card to pay. */
+  hamyonView(t: any) {
+    return {
+      paymentProvider: 'hamyon' as const,
+      uniqueAmount: t.hamyonAmount as number,
+      expiresAt: t.expireAt as Date,
+      card: t.hamyonCard ? { masked: maskCard(t.hamyonCard), raw: t.hamyonCard as string, holder: '', bank: '' } : null,
+    };
   }
 
   /** Shared only after an authenticated payment has been atomically claimed. */
@@ -281,7 +304,7 @@ export class PaymentService {
         // same amount can never both succeed — the second finds no pending row left to claim.
         const transaction = await Transaction.findOneAndUpdate(
           {
-            paymentProvider: { $ne: 'tezcheck' },
+            paymentProvider: 'sms',
             uniqueAmount: roundedAmount,
             status: 'pending_payment',
             expireAt: { $gt: new Date() },
