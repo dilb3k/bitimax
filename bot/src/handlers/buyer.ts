@@ -110,7 +110,7 @@ export function createCodeWizard() {
           '',
           describeRefundPolicy(),
         ].join('\n'),
-        dealBuyButtons(String(deal._id))
+        dealBuyButtons(String(deal._id), String(deal.dealCode))
       );
 
       return ctx.scene.leave();
@@ -156,9 +156,11 @@ buyerHandler.action(/^catalog_page_(\d+)$/, async (ctx) => {
   await sendCatalogPage(ctx, page, true);
 });
 
-buyerHandler.action(/^buy_(.+)$/, async (ctx) => {
+// Public listings: `buy_<id>`. Private deals: `buyd_<id>_<code>` — the code is what authorizes it.
+buyerHandler.action(/^buy(?:_([a-f\d]{24})|d_([a-f\d]{24})_([A-Z0-9]{8}))$/i, async (ctx) => {
   try {
-    const productId = ctx.match[1];
+    const productId = ctx.match[1] || ctx.match[2];
+    const dealCode = ctx.match[3];
     const user = await User.findOne({ telegramId: ctx.from!.id });
 
     if (!user) {
@@ -173,7 +175,8 @@ buyerHandler.action(/^buy_(.+)$/, async (ctx) => {
     await ctx.answerCbQuery('To‘lov tayyorlanmoqda…');
     const { product, uniqueAmount, card, expiresAt, paymentProvider } = await marketplace.initiatePurchase(
       productId,
-      user._id.toString()
+      user._id.toString(),
+      dealCode
     );
 
     // The full number, not the masked one: this is the platform's own receiving card and the
@@ -471,16 +474,10 @@ buyerHandler.action(/^rate_(.+)_([1-5])$/, async (ctx) => {
       await ctx.answerCbQuery(owned.error);
       return;
     }
-    if (owned.escrow.buyerRating) {
-      await ctx.answerCbQuery('Siz allaqachon baho bergansiz');
+    if (!(await marketplace.rateHold(String(owned.escrow._id), rating))) {
+      await ctx.answerCbQuery('Bahoni faqat yakunlangan bitimga bir marta berish mumkin');
       return;
     }
-
-    owned.escrow.buyerRating = rating;
-    await owned.escrow.save();
-    await User.findByIdAndUpdate(owned.escrow.sellerId, {
-      $inc: { 'sellerStats.ratingSum': rating, 'sellerStats.ratingCount': 1 },
-    });
 
     await ctx.editMessageReplyMarkup(undefined);
     await ctx.answerCbQuery(`Rahmat! Bahoyingiz: ${'⭐'.repeat(rating)}`);

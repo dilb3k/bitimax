@@ -174,7 +174,7 @@ async function scenarioPublicSale() {
   });
   await expectThrow(
     'sotuvchi o‘z mahsulotini sotib ololmaydi',
-    () => marketplace.initiatePurchase(String(ownProduct._id), String(seller._id)),
+    () => marketplace.initiatePurchase(String(ownProduct._id), String(seller._id), ownProduct.dealCode!),
     ForbiddenError
   );
   const releasedBack = await Product.findById(ownProduct._id);
@@ -328,8 +328,20 @@ async function scenarioPrivateDeal() {
   ));
   check('noto‘g‘ri kod hech narsa qaytarmaydi', (await marketplace.findDealByCode('AAAA2222')) === null);
 
+  // The id alone must never open a private deal; only the code does.
+  await expectThrow(
+    'yopiq bitimni kodsiz (faqat ID bilan) band qilib bo‘lmaydi',
+    () => marketplace.initiatePurchase(String(deal._id), String(buyer._id)),
+    ProductUnavailableError
+  );
+  await expectThrow(
+    'yopiq bitimni noto‘g‘ri kod bilan band qilib bo‘lmaydi',
+    () => marketplace.initiatePurchase(String(deal._id), String(buyer._id), 'AAAA2222'),
+    ProductUnavailableError
+  );
+
   // Buyer redeems and pays.
-  const purchase = await marketplace.initiatePurchase(String(deal._id), String(buyer._id));
+  const purchase = await marketplace.initiatePurchase(String(deal._id), String(buyer._id), deal.dealCode!);
   const paid = await payFor(purchase.uniqueAmount, 'deal');
   eq('kafil bitim to‘lovi tasdiqlandi', paid.matched, true);
 
@@ -404,7 +416,7 @@ async function scenarioRefundAbuse() {
       login: `login${i}`,
       password: `pass${i}`,
     });
-    const purchase = await marketplace.initiatePurchase(String(deal._id), String(buyer._id));
+    const purchase = await marketplace.initiatePurchase(String(deal._id), String(buyer._id), deal.dealCode!);
     const paid = await payFor(purchase.uniqueAmount, `abuse${i}`);
     const escrow = await EscrowHold.findOne({ transactionId: paid.transaction._id });
     await paymentService.revealCredentials(String(escrow!._id), String(buyer._id));
@@ -487,7 +499,7 @@ async function scenarioSchedulers() {
     login: 'x',
     password: 'y',
   });
-  const pending = await marketplace.initiatePurchase(String(p1._id), String(buyer._id));
+  const pending = await marketplace.initiatePurchase(String(p1._id), String(buyer._id), p1.dealCode!);
   await Transaction.updateOne(
     { _id: pending.transaction._id },
     { $set: { expireAt: new Date(Date.now() - 1000) } }
@@ -508,7 +520,7 @@ async function scenarioSchedulers() {
     login: 'a',
     password: 'b',
   });
-  const buy2 = await marketplace.initiatePurchase(String(p2._id), String(buyer._id));
+  const buy2 = await marketplace.initiatePurchase(String(p2._id), String(buyer._id), p2.dealCode!);
   const paid2 = await payFor(buy2.uniqueAmount, 'auto');
   const esc2 = await EscrowHold.findOne({ transactionId: paid2.transaction._id });
   await paymentService.revealCredentials(String(esc2!._id), String(buyer._id));
@@ -534,7 +546,7 @@ async function scenarioSchedulers() {
     login: 'c',
     password: 'd',
   });
-  const buy3 = await marketplace.initiatePurchase(String(p3._id), String(buyer._id));
+  const buy3 = await marketplace.initiatePurchase(String(p3._id), String(buyer._id), p3.dealCode!);
   const paid3 = await payFor(buy3.uniqueAmount, 'unrevealed');
   const esc3 = await EscrowHold.findOne({ transactionId: paid3.transaction._id });
   await EscrowHold.updateOne(

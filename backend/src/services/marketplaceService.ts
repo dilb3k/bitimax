@@ -216,8 +216,26 @@ export class MarketplaceService {
    * paymentService, which is also where the product-availability check happens atomically —
    * checking here first would only add a race window.
    */
-  async initiatePurchase(productId: string, buyerId: string) {
-    return paymentService.createPaymentTransaction(productId, buyerId);
+  async initiatePurchase(productId: string, buyerId: string, dealCode?: string) {
+    return paymentService.createPaymentTransaction(productId, buyerId, dealCode);
+  }
+
+  /**
+   * Records the buyer's rating once. The conditional update (not read-modify-write) is what stops
+   * two quick taps from counting twice in the seller's average. Returns false if the hold was
+   * already rated or is not finished yet.
+   */
+  async rateHold(holdId: string, rating: number): Promise<boolean> {
+    const claimed = await EscrowHold.findOneAndUpdate(
+      { _id: holdId, buyerRating: { $exists: false }, status: { $in: ['released', 'refunded', 'partial_refunded'] } },
+      { $set: { buyerRating: rating } },
+      { new: true }
+    );
+    if (!claimed) return false;
+    await User.findByIdAndUpdate(claimed.sellerId, {
+      $inc: { 'sellerStats.ratingSum': rating, 'sellerStats.ratingCount': 1 },
+    });
+    return true;
   }
 
   supportLink(): string {

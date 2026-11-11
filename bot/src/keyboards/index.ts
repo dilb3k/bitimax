@@ -43,9 +43,10 @@ export function sellModeButtons() {
   ]);
 }
 
-export function dealBuyButtons(productId: string) {
+/** Private deals carry their code in the callback (24 + 8 chars, well under Telegram's 64 bytes). */
+export function dealBuyButtons(productId: string, dealCode: string) {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('To‘lovni boshlash', `buy_${productId}`)],
+    [Markup.button.callback('To‘lovni boshlash', `buyd_${productId}_${dealCode}`)],
     [Markup.button.callback('Bekor qilish', 'deal_abort')],
   ]);
 }

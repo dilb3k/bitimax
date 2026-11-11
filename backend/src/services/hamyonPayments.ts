@@ -197,4 +197,18 @@ export async function notifyHamyonPaid(transactionId: unknown) {
 export async function sweepHamyonNotifications() {
   const paid = await Transaction.find({ paymentProvider: 'hamyon', status: 'paid', paymentNotifiedAt: { $exists: false } }).limit(30);
   for (const t of paid) await notifyHamyonPaid(t._id).catch(() => undefined);
+
+  // Money that arrived but needs a human. If the first admin alert failed (Telegram down), later
+  // duplicate callbacks stay silent, so without this retry nobody would ever hear about it.
+  const unreported = await Transaction.find({
+    paymentProvider: 'hamyon',
+    paymentReview: { $exists: true },
+    paymentReviewNotifiedAt: { $exists: false },
+  }).limit(20);
+  for (const t of unreported) {
+    const sent = await notificationService
+      .notifyAdmin(`⚠️ HamyonAPI: ${t.paymentReview}. Buyurtma: ${t._id}, summa: ${t.hamyonAmount}. Qo‘lda tekshiring.`)
+      .catch(() => false);
+    if (sent) await Transaction.updateOne({ _id: t._id }, { $set: { paymentReviewNotifiedAt: new Date() } });
+  }
 }

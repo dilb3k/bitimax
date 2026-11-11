@@ -54,7 +54,7 @@ export function DealCodePanel() {
     setBusy('buy');
     setError(null);
     try {
-      const payment = await api.buy(deal.id);
+      const payment = await api.buy(deal.id, code);
       router.replace(`/tolov/${payment.transactionId}`);
     } catch (err: any) {
       if (!(err instanceof ApiError) || err.status !== 401) {

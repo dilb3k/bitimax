@@ -115,7 +115,9 @@ export async function settleDueEscrows(): Promise<{ released: number; refunded: 
       } else {
         await paymentService.processRefund(
           String(hold._id),
-          `Xaridor ${config.unrevealedGraceHours} soat ichida ma’lumotlarni ochmadi — avtomatik qaytarish`
+          `Xaridor ${config.unrevealedGraceHours} soat ichida ma’lumotlarni ochmadi — avtomatik qaytarish`,
+          undefined,
+          { onlyIfUnrevealed: true }
         );
         await Product.findByIdAndUpdate(hold.productId, {
           $set: { status: 'active' },

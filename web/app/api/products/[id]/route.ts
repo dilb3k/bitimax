@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
+import { publicBackendFetch } from '@/lib/server/session';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/products/${encodeURIComponent(params.id)}`, {
+    const res = await publicBackendFetch(`/api/products/${encodeURIComponent(params.id)}`, {
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(25000),
-      next: { revalidate: 30 },
     });
 
     const data = await res.json();

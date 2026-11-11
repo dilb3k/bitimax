@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
+import { publicBackendFetch } from '@/lib/server/session';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const params = new URLSearchParams(searchParams);
 
-    const res = await fetch(`${BACKEND_URL}/api/products?${params}`, {
+    // Sent with the visitor's identity (not a shared cache) so the API rate-limits each visitor
+    // separately; otherwise one client varying the query could exhaust the limit for everyone.
+    const res = await publicBackendFetch(`/api/products?${params}`, {
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(25000),
-      next: { revalidate: 30 },
     });
 
     const data = await res.json();

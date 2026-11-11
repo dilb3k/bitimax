@@ -11,6 +11,7 @@ import {
   looksLikeIncomingPayment,
   smsFingerprint,
   maskCard,
+  normalizeDealCode,
 } from '../utils/helpers';
 import {
   calculateSellerPayout,
@@ -93,7 +94,7 @@ export class PaymentService {
     }
   }
 
-  async createPaymentTransaction(productId: string, buyerId: string) {
+  async createPaymentTransaction(productId: string, buyerId: string, dealCode?: string) {
     if (config.paymentProvider === 'hamyon') {
       const existing = await Transaction.findOne({ productId, buyerId, status: 'pending_payment', paymentProvider: 'hamyon', hamyonPaymentId: { $exists: true } });
       if (existing) {
@@ -117,7 +118,17 @@ export class PaymentService {
       {
         _id: productId,
         status: 'active',
-        $or: [{ reservedUntil: { $exists: false } }, { reservedUntil: { $lt: new Date() } }],
+        // A private deal is reachable only through its code. Without this a leaked or guessed
+        // ObjectId would let a stranger reserve (and so block) a deal agreed between two people.
+        $and: [
+          {
+            $or: [
+              { listingType: { $ne: 'private' } },
+              ...(dealCode ? [{ listingType: 'private', dealCode: normalizeDealCode(dealCode) }] : []),
+            ],
+          },
+          { $or: [{ reservedUntil: { $exists: false } }, { reservedUntil: { $lt: new Date() } }] },
+        ],
       },
       {
         $set: {
@@ -465,9 +476,10 @@ export class PaymentService {
   private async claimHolding(
     escrowHoldId: string,
     update: Record<string, any>,
-    session: mongoose.ClientSession
+    session: mongoose.ClientSession,
+    extraFilter: Record<string, any> = {}
   ) {
-    return EscrowHold.findOneAndUpdate({ _id: escrowHoldId, status: 'holding' }, update, {
+    return EscrowHold.findOneAndUpdate({ _id: escrowHoldId, status: 'holding', ...extraFilter }, update, {
       new: true,
       session,
     });
@@ -478,10 +490,13 @@ export class PaymentService {
    * is split between the seller (compensation) and the platform (its commission on that
    * share) — see refundEngine for why the buyer's percentage is the fixed promise.
    */
-  async processRefund(escrowHoldId: string, reason: string, actorId?: string) {
+  async processRefund(escrowHoldId: string, reason: string, actorId?: string, opts: { onlyIfUnrevealed?: boolean } = {}) {
     const existing = await EscrowHold.findById(escrowHoldId);
     if (!existing) throw new Error('Escrow hold not found');
     if (existing.status !== 'holding') throw new AlreadyProcessedError();
+    // The scheduler decides to refund from a snapshot; if the buyer opened the credentials since,
+    // a refund would hand back the money AND leave them the account. Skip — the next sweep releases.
+    if (opts.onlyIfUnrevealed && existing.credentialsRevealedAt) throw new AlreadyProcessedError();
 
     const quote = await this.quoteRefundFor(escrowHoldId);
 
@@ -502,6 +517,7 @@ export class PaymentService {
       period: quote.period,
       penaltyPercent: quote.penaltyPercent,
       actorId,
+      claimFilter: opts.onlyIfUnrevealed ? { credentialsRevealedAt: { $exists: false } } : undefined,
     });
 
     await this.recordBuyerRefund(String(existing.buyerId));
@@ -568,6 +584,8 @@ export class PaymentService {
       period?: string;
       penaltyPercent?: number;
       actorId?: string;
+      /** Extra conditions the hold must still satisfy at claim time (guards against stale reads). */
+      claimFilter?: Record<string, any>;
     }
   ) {
     const session = await mongoose.startSession();
@@ -593,7 +611,7 @@ export class PaymentService {
           };
         }
 
-        const escrow = await this.claimHolding(escrowHoldId, update, session);
+        const escrow = await this.claimHolding(escrowHoldId, update, session, opts.claimFilter);
         if (!escrow) throw new AlreadyProcessedError();
 
         const total = opts.buyerAmount + opts.sellerAmount + opts.platformAmount;

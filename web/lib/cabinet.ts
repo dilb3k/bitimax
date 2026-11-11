@@ -230,7 +230,8 @@ export const api = {
     }),
   rate: (id: string, rating: number) => post<{ ok: boolean }>(`orders/${id}/rate`, { rating }),
 
-  buy: (productId: string) => post<PaymentInstructions>('purchases', { productId }),
+  buy: (productId: string, code?: string) =>
+    post<PaymentInstructions>('purchases', code ? { productId, code } : { productId }),
   transactionStatus: (id: string) =>
     call<{
       paymentProvider?: 'sms' | 'hamyon';

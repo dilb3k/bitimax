@@ -143,7 +143,11 @@ router.patch('/settings', writeLimiter, async (req: Request, res: Response) => {
 
 // ── Buying ─────────────────────────────────────────────────────────────────────
 
-const purchaseSchema = z.object({ productId: z.string().regex(/^[a-f\d]{24}$/i, 'Mahsulot topilmadi') });
+const purchaseSchema = z.object({
+  productId: z.string().regex(/^[a-f\d]{24}$/i, 'Mahsulot topilmadi'),
+  // Required for private deals, ignored for public listings.
+  code: z.string().min(4).max(20).optional(),
+});
 
 /**
  * Opens a purchase and returns the payment instructions.
@@ -155,12 +159,13 @@ const purchaseSchema = z.object({ productId: z.string().regex(/^[a-f\d]{24}$/i, 
  */
 router.post('/purchases', writeLimiter, async (req: Request, res: Response) => {
   try {
-    const { productId } = parse(purchaseSchema, req.body);
+    const { productId, code } = parse(purchaseSchema, req.body);
     const user = actor(req);
 
     const { transaction, product, uniqueAmount, card, expiresAt } = await paymentService.createPaymentTransaction(
       productId,
-      String(user._id)
+      String(user._id),
+      code
     );
 
     res.json({
@@ -537,18 +542,9 @@ router.post('/orders/:id/rate', writeLimiter, validateObjectId(), async (req: Re
     const hold = await ownedEscrow(req, res);
     if (!hold) return;
 
-    // Conditional update rather than read-modify-write: two rapid clicks must not add two
-    // ratings to the seller's average.
-    const claimed = await EscrowHold.findOneAndUpdate(
-      { _id: hold._id, buyerRating: { $exists: false }, status: { $in: ['released', 'refunded', 'partial_refunded'] } },
-      { $set: { buyerRating: rating } },
-      { new: true }
-    );
-    if (!claimed) return res.status(409).json({ error: 'Bahoni faqat yakunlangan bitimga bir marta berish mumkin' });
-
-    await User.findByIdAndUpdate(hold.sellerId, {
-      $inc: { 'sellerStats.ratingSum': rating, 'sellerStats.ratingCount': 1 },
-    });
+    if (!(await marketplace.rateHold(String(hold._id), rating))) {
+      return res.status(409).json({ error: 'Bahoni faqat yakunlangan bitimga bir marta berish mumkin' });
+    }
 
     res.json({ ok: true, rating });
   } catch (error: any) {
