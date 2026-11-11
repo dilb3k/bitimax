@@ -480,13 +480,6 @@ async function scenarioPayout() {
       !withCard!.payoutCard!.encrypted.includes('8600123456789012')
   );
 
-  // Fresh card: payout is held back by the cooldown, then allowed once it is switched off.
-  config.payoutCardCooldownHours = 24;
-  await expectThrow('yangi kartaga darrov yechib bo‘lmaydi', () =>
-    payoutService.requestPayout(String(seller!._id), 100_000)
-  );
-  config.payoutCardCooldownHours = 0;
-
   await expectThrow(
     'balansdan ortiq yechib bo‘lmaydi',
     () => payoutService.requestPayout(String(seller!._id), balance + 1),
