@@ -7,7 +7,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function PaymentPage({ params }: { params: { id: string } }) {
+export default async function PaymentPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   return (
     <>
       <Header />
@@ -16,7 +17,7 @@ export default function PaymentPage({ params }: { params: { id: string } }) {
         <p className="mb-6 text-sm text-muted">
           To‘lovni yakunlang va akkauntni tekshirishga o‘ting.
         </p>
-        <PaymentPanel key={params.id} transactionId={params.id} />
+        <PaymentPanel key={id} transactionId={id} />
       </main>
       <Footer />
     </>

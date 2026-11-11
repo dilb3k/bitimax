@@ -4,9 +4,9 @@ import { publicBackendFetch } from '@/lib/server/session';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const res = await publicBackendFetch(`/api/products/${encodeURIComponent(params.id)}`, {
+    const res = await publicBackendFetch(`/api/products/${encodeURIComponent((await params).id)}`, {
       headers: { 'Content-Type': 'application/json' },
     });
 

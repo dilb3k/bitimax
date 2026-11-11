@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * is the whole ballgame: `connect-src 'self'` plus `form-action 'self'` mean that even if
  * markup were somehow injected, it has nowhere to send what it reads.
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64');
   const isDev = process.env.NODE_ENV !== 'production';
 

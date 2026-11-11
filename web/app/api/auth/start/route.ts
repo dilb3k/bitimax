@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
  * in JavaScript is a token an injected script can carry off and redeem elsewhere.
  */
 export async function POST(request: Request) {
-  if (!isSameOrigin(request)) {
+  if (!(await isSameOrigin(request))) {
     return NextResponse.json({ error: 'So‘rov rad etildi' }, { status: 403 });
   }
 

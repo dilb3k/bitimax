@@ -13,8 +13,8 @@ import { SESSION_COOKIE } from '@/lib/server/session';
  * presence here. Whether it is a real, unexpired session for a user who is still allowed to
  * trade is decided by the backend on every single request behind `/api/me`.
  */
-export default function CabinetLayout({ children }: { children: React.ReactNode }) {
-  if (!cookies().get(SESSION_COOKIE)?.value) redirect(`/kirish?next=${encodeURIComponent(safeNextPath(headers().get('x-pathname')))}`);
+export default async function CabinetLayout({ children }: { children: React.ReactNode }) {
+  if (!(await cookies()).get(SESSION_COOKIE)?.value) redirect(`/kirish?next=${encodeURIComponent(safeNextPath((await headers()).get('x-pathname')))}`);
 
   return (
     <>

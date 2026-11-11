@@ -28,8 +28,8 @@ async function getProduct(id: string): Promise<Product | null> {
   return (await res.json()).product ?? null;
 }
 
-export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const product = await getProduct(params.id);
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const product = await getProduct((await params).id);
   if (!product) return { title: 'Mahsulot topilmadi — Bitmax' };
   return {
     title: `${product.title} — Bitmax`,
@@ -37,8 +37,8 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   };
 }
 
-export default async function ProductPage({ params }: { params: { id: string } }) {
-  const product = await getProduct(params.id);
+export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
+  const product = await getProduct((await params).id);
   if (!product) notFound();
 
   const seller = product.seller;
