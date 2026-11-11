@@ -65,6 +65,18 @@ export class PayoutService {
     if (user.isBlocked) throw new Error('Hisobingiz bloklangan');
     if (!user.payoutCard?.encrypted) throw new Error('Avval karta raqamingizni saqlang');
 
+    // A stolen session's first move is to swap the payout card and cash out. Making a new card
+    // wait gives the real owner time to notice.
+    const cooldownMs = config.payoutCardCooldownHours * 3600_000;
+    const cardChangedAt = user.payoutCard.updatedAt?.getTime() ?? 0;
+    if (cooldownMs > 0 && Date.now() - cardChangedAt < cooldownMs) {
+      const readyAt = new Date(cardChangedAt + cooldownMs);
+      throw new Error(
+        `Xavfsizlik uchun yangi karta saqlangandan keyin ${config.payoutCardCooldownHours} soat yechib bo‘lmaydi. ` +
+          `Yechish ${readyAt.toLocaleString('uz-UZ')} dan keyin mumkin.`
+      );
+    }
+
     const fee = config.payoutFeeFlat;
     const netAmount = amount - fee;
     if (netAmount <= 0) throw new Error('Summa komissiyani qoplamaydi');

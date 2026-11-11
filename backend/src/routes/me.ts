@@ -162,7 +162,7 @@ router.post('/purchases', writeLimiter, async (req: Request, res: Response) => {
     const { productId, code } = parse(purchaseSchema, req.body);
     const user = actor(req);
 
-    const { transaction, product, uniqueAmount, card, expiresAt } = await paymentService.createPaymentTransaction(
+    const { transaction, product, uniqueAmount, card, expiresAt, demo } = await paymentService.createPaymentTransaction(
       productId,
       String(user._id),
       code
@@ -177,6 +177,7 @@ router.post('/purchases', writeLimiter, async (req: Request, res: Response) => {
       expiresAt,
       card: card ? { number: card.raw, masked: card.masked, holder: card.holder, bank: card.bank } : null,
       paymentWindowMinutes: config.paymentWindowMinutes,
+      confirmed: Boolean(demo),
     });
   } catch (error: any) {
     if (badRequest(res, error)) return;

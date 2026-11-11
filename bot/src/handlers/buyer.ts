@@ -173,11 +173,17 @@ buyerHandler.action(/^buy(?:_([a-f\d]{24})|d_([a-f\d]{24})_([A-Z0-9]{8}))$/i, as
     }
 
     await ctx.answerCbQuery('To‘lov tayyorlanmoqda…');
-    const { product, uniqueAmount, card, expiresAt, paymentProvider } = await marketplace.initiatePurchase(
+    const { product, uniqueAmount, card, expiresAt, paymentProvider, demo } = await marketplace.initiatePurchase(
       productId,
       user._id.toString(),
       dealCode
     );
+
+    // Demo mode: already confirmed; the "payment accepted" message with the open button was sent.
+    if (demo) {
+      await ctx.editMessageText(`✅ <b>${escapeHtml(product.title)}</b> — to‘lov qabul qilindi.`, { parse_mode: 'HTML' });
+      return;
+    }
 
     // The full number, not the masked one: this is the platform's own receiving card and the
     // buyer cannot make the transfer without it. Masking it here (as an earlier version did)
@@ -519,8 +525,8 @@ buyerHandler.action(/^refund_escrow_(.+)$/, async (ctx) => {
       // below (rdo_*) — that mismatch is fixed by describing the actual behavior instead of a
       // review step that never happens.
       quote.requiresArbitration
-        ? `⚠️ <i>Sizda so‘nggi 30 kunda ko‘p qaytarish qayd etilgan. Bu so‘rov ham hisobga ` +
-          `olinadi va profilingiz keyingi tekshiruvlarda ko‘rib chiqiladi.</i>`
+        ? `⚠️ <i>Sizda so‘nggi 30 kunda ko‘p qaytarish qayd etilgan, shuning uchun avtomatik ` +
+          `qaytarish o‘chirilgan. Qo‘llab-quvvatlashga murojaat qiling.</i>`
         : `<i>Sababni tanlang:</i>`,
     ].join('\n'),
     { parse_mode: 'HTML', reply_markup: refundReasonButtons(escrowId).reply_markup }

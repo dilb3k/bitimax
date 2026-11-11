@@ -20,6 +20,7 @@ import {
   calculateRefundAmount,
 } from './refundEngine';
 import { ledgerService, accounts } from './ledgerService';
+import { notificationService } from './notificationService';
 import { config, isAdminTelegramId } from '../config';
 import { RefundQuote } from '../types';
 
@@ -94,6 +95,63 @@ export class PaymentService {
     }
   }
 
+  /**
+   * DEMO MODE ONLY (DEMO_PAYMENTS): confirms the purchase immediately. It goes through the same
+   * fundEscrow as a real payment, so escrow, ledger and refund rules behave identically; only the
+   * bank inflow is simulated (ledger meta marks it provider "demo").
+   */
+  private async demoPay(product: any, buyerId: string, expireAt: Date) {
+    const session = await mongoose.startSession();
+    let transaction: any;
+    try {
+      await session.withTransaction(async () => {
+        const [tx] = await Transaction.create(
+          [
+            {
+              productId: product._id,
+              buyerId,
+              sellerId: product.sellerId,
+              basePrice: product.price,
+              expectedAmount: product.price,
+              uniqueAmount: product.price,
+              paymentProvider: 'sms',
+              status: 'paid',
+              paidAt: new Date(),
+              expireAt,
+              cancelReason: undefined,
+            },
+          ],
+          { session }
+        );
+        transaction = tx;
+        await this.fundEscrow(tx, session, { provider: 'demo' });
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    const [buyer, hold] = await Promise.all([
+      User.findById(buyerId).select('telegramId'),
+      EscrowHold.findOne({ transactionId: transaction._id }),
+    ]);
+    if (buyer?.telegramId && hold) {
+      const sent = await notificationService.notifyPaymentConfirmed(
+        buyer.telegramId, product.title || 'Mahsulot', transaction.basePrice, String(hold._id), hold.autoReleaseAt
+      ).catch(() => false);
+      if (sent) await Transaction.updateOne({ _id: transaction._id }, { $set: { paymentNotifiedAt: new Date() } });
+    }
+
+    return {
+      transaction,
+      paymentProvider: transaction.paymentProvider,
+      product,
+      uniqueAmount: product.price,
+      expiresAt: expireAt,
+      card: null,
+      demo: true as const,
+    };
+  }
+
   async createPaymentTransaction(productId: string, buyerId: string, dealCode?: string) {
     if (config.paymentProvider === 'hamyon') {
       const existing = await Transaction.findOne({ productId, buyerId, status: 'pending_payment', paymentProvider: 'hamyon', hamyonPaymentId: { $exists: true } });
@@ -101,7 +159,7 @@ export class PaymentService {
         if (existing.expireAt.getTime() > Date.now()) {
           const product = await Product.findById(productId);
           if (!product) throw new ProductUnavailableError();
-          return { transaction: existing, product, ...this.hamyonView(existing) };
+          return { transaction: existing, product, demo: false as const, ...this.hamyonView(existing) };
         }
         // Window over: close it so the buyer can start a fresh payment right away.
         const closed = await Transaction.findOneAndUpdate({ _id: existing._id, status: 'pending_payment' },
@@ -149,12 +207,21 @@ export class PaymentService {
       throw new ForbiddenError('O‘z mahsulotingizni sotib ololmaysiz');
     }
 
+    if (config.demoPayments) {
+      try {
+        return await this.demoPay(product, buyerId, expireAt);
+      } catch (err) {
+        await this.releaseReservation(String(product._id));
+        throw err;
+      }
+    }
+
     if (config.paymentProvider === 'hamyon') {
       try {
         const { openHamyonPayment } = await import('./hamyonPayments');
         const transaction = await openHamyonPayment(product, buyerId);
         if (config.testAutoConfirmAdmin) void this.testAutoPay(transaction, buyerId);
-        return { transaction, product, ...this.hamyonView(transaction) };
+        return { transaction, product, demo: false as const, ...this.hamyonView(transaction) };
       } catch (err) {
         await this.releaseReservation(String(product._id));
         throw err;
@@ -185,6 +252,7 @@ export class PaymentService {
           transaction,
           paymentProvider: transaction.paymentProvider,
           product,
+          demo: false as const,
           uniqueAmount,
           expiresAt: expireAt,
           card: card
@@ -502,6 +570,18 @@ export class PaymentService {
 
     if (!quote.allowed) {
       return { allowed: false, quote, message: quote.message };
+    }
+
+    // A buyer flagged for refund abuse no longer gets instant refunds; a person decides. The
+    // scheduler's unrevealed auto-refund has no actor and is unaffected (nothing was delivered).
+    if (actorId && quote.requiresArbitration) {
+      return {
+        allowed: false,
+        quote,
+        message:
+          'Sizda so‘nggi 30 kunda ko‘p qaytarish qayd etilgan, shuning uchun avtomatik qaytarish o‘chirilgan. ' +
+          'Iltimos, qo‘llab-quvvatlashga murojaat qiling — so‘rovingizni inson ko‘rib chiqadi.',
+      };
     }
 
     await this.settleEscrow(escrowHoldId, {

@@ -50,6 +50,10 @@ services:
         value: false
       - key: ALLOW_SELF_PURCHASE
         value: false
+      # DEMO MODE: pressing pay confirms the order instantly, no real money. Remove (or set to
+      # false) to go back to real HamyonAPI payments; the real payment code is untouched.
+      - key: DEMO_PAYMENTS
+        value: true
       - key: PAYMENT_PROVIDER
         value: hamyon
       - key: HAMYON_BASE_URL
@@ -126,6 +130,10 @@ services:
         sync: false
       - key: ALLOW_SELF_PURCHASE
         value: false
+      # DEMO MODE: pressing pay confirms the order instantly, no real money. Remove (or set to
+      # false) to go back to real HamyonAPI payments; the real payment code is untouched.
+      - key: DEMO_PAYMENTS
+        value: true
       - key: PAYMENT_PROVIDER
         value: hamyon
       - key: HAMYON_BASE_URL

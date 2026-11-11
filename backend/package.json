@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "e2e": "tsx src/scripts/e2e.ts",
     "test:hamyon": "node --import tsx src/scripts/hamyon-integration.ts",
+    "test:demo": "node --import tsx src/scripts/demo-payment.ts",
     "test:web": "node --import tsx src/scripts/web-regression.ts"
   },
   "dependencies": {

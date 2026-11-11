@@ -430,6 +430,18 @@ async function scenarioRefundAbuse() {
     true
   );
   eq('30 kunlik oyna hisoblandi', flagged!.buyerStats.refundsLast30d, config.refundAbuseThreshold);
+
+  // Once flagged, the next buyer-initiated refund must be refused (a person decides).
+  const extra = await marketplace.createDeal({
+    sellerId: String(seller._id), title: 'Qo‘shimcha', price: 100_000, login: 'lx', password: 'px',
+  });
+  const extraBuy = await marketplace.initiatePurchase(String(extra._id), String(buyer._id), extra.dealCode!);
+  const extraPaid = await payFor(extraBuy.uniqueAmount, 'abuse-extra');
+  const extraEscrow = await EscrowHold.findOne({ transactionId: extraPaid.transaction._id });
+  await paymentService.revealCredentials(String(extraEscrow!._id), String(buyer._id));
+  const blocked = await paymentService.processRefund(String(extraEscrow!._id), 'test', String(buyer._id));
+  eq('belgilangan xaridorga avtomatik qaytarish berilmaydi', blocked.allowed, false);
+  eq('hold hali ham holding', (await EscrowHold.findById(extraEscrow!._id))!.status, 'holding');
   await assertLedgerBalanced('suiiste’mol stsenariysidan keyin');
 }
 
@@ -452,6 +464,13 @@ async function scenarioPayout() {
     withCard!.payoutCard!.encrypted.startsWith('v1:') &&
       !withCard!.payoutCard!.encrypted.includes('8600123456789012')
   );
+
+  // Fresh card: payout is held back by the cooldown, then allowed once it is switched off.
+  config.payoutCardCooldownHours = 24;
+  await expectThrow('yangi kartaga darrov yechib bo‘lmaydi', () =>
+    payoutService.requestPayout(String(seller!._id), 100_000)
+  );
+  config.payoutCardCooldownHours = 0;
 
   await expectThrow(
     'balansdan ortiq yechib bo‘lmaydi',
