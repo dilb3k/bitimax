@@ -13,6 +13,9 @@
  * to sit next to it — the greys and the brand share one hue.
  */
 @layer base {
+  /* Sticky footer: the page body is a column and <main> takes the leftover height, so the footer
+     sits at the bottom of short pages instead of floating mid-screen. */
+  body > main { flex: 1 0 auto; width: 100%; }
   :root {
     --ground: 248 250 252; /* slate-50 */
     --surface: 255 255 255;

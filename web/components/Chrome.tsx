@@ -118,7 +118,7 @@ function ThemeToggle() {
 }
 
 export function Footer() {
-  return <footer className="mt-8 border-t border-line bg-surface pb-20 lg:pb-0">
+  return <footer className="mt-8 shrink-0 border-t border-line bg-surface">
     <div className="mx-auto flex max-w-6xl flex-col gap-5 px-5 py-7 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-8">
       <div className="flex items-center gap-3"><LogoMark size={22} /><span className="font-semibold">Bitmax</span><span className="text-faint">© {new Date().getFullYear()}</span></div>
       <nav aria-label="Qo‘shimcha havolalar" className="flex flex-wrap gap-x-6 gap-y-3 text-muted">

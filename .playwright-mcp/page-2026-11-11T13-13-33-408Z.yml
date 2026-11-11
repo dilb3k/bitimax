@@ -1,0 +1,34 @@
+- generic [active] [ref=f20e1]:
+  - banner [ref=f20e2]:
+    - link "Asosiy qismga o‘tish" [ref=f20e3] [cursor=pointer]:
+      - /url: "#main-content"
+    - generic [ref=f20e4]:
+      - link "Bitmax" [ref=f20e5] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=f20e9]:
+        - button "Qorong‘i rejimga o‘tish" [ref=f20e10] [cursor=pointer]
+        - link "Kirish" [ref=f20e13] [cursor=pointer]:
+          - /url: /kirish
+        - button "Menyuni ochish" [ref=f20e15] [cursor=pointer]
+  - main [ref=f20e18]:
+    - heading "Kod bilan sotib olish" [level=1] [ref=f20e19]
+    - paragraph [ref=f20e20]: Sotuvchi bilan allaqachon kelishgan bo‘lsangiz — u bergan kodni kiriting. Bitmax o‘rtada kafil bo‘lib turadi.
+    - generic [ref=f20e21]:
+      - generic [ref=f20e22]: Sotuvchi bergan 8 belgili kod
+      - textbox "Sotuvchi bergan 8 belgili kod" [ref=f20e23]:
+        - /placeholder: ABCD-2345
+      - button "Bitimni ochish" [disabled] [ref=f20e24]
+      - paragraph [ref=f20e25]: Kod faqat siz va sotuvchiga ma’lum. Bitim katalogda ko‘rinmaydi.
+  - contentinfo [ref=f20e26]:
+    - generic [ref=f20e27]:
+      - generic [ref=f20e28]:
+        - generic [ref=f20e30]: Bitmax
+        - generic [ref=f20e31]: © 2026
+      - navigation "Qo‘shimcha havolalar" [ref=f20e32]:
+        - link "Savdo shartlari" [ref=f20e33] [cursor=pointer]:
+          - /url: /shartlar
+        - link "Telegram bot" [ref=f20e34] [cursor=pointer]:
+          - /url: https://t.me/bitimax_bot
+        - link "Yordam" [ref=f20e35] [cursor=pointer]:
+          - /url: https://t.me/bitimax_admin
+  - alert [ref=f20e36]

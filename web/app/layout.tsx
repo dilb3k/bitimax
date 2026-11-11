@@ -72,7 +72,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           dangerouslySetInnerHTML={{ __html: noFlashTheme }}
         />
       </head>
-      <body className="min-h-screen font-sans">{children}</body>
+      <body className="flex min-h-screen min-h-dvh flex-col font-sans">{children}</body>
     </html>
   );
 }
