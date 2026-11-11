@@ -4,7 +4,9 @@ import { Product } from '../models/Product';
 import { Transaction } from '../models/Transaction';
 import { EscrowHold } from '../models/EscrowHold';
 import { paymentService } from './paymentService';
-import { config } from '../config';
+import { config, CATEGORIES } from '../config';
+import { audit } from '../models/AuditLog';
+import { encryptSecret } from '../utils/crypto';
 import { generateDealCode, normalizeDealCode } from '../utils/helpers';
 
 export class BlockedUserError extends Error {
@@ -169,6 +171,87 @@ export class MarketplaceService {
   /** Seller cancels their own unclaimed deal, invalidating the code. */
   async cancelDeal(productId: string, sellerId: string) {
     return this.cancelListing(productId, sellerId);
+  }
+
+  /**
+   * Edits a listing the seller still owns outright. One conditional update decides it: the
+   * product must be unsold and unreserved *at the moment of the write*, so a buyer who reserves
+   * it a millisecond earlier wins and the edit is refused (returns null) instead of changing
+   * the terms under someone who is already paying.
+   *
+   * Credentials are re-encrypted individually, so editing only the password keeps the login.
+   */
+  async updateListing(
+    productId: string,
+    sellerId: string,
+    patch: {
+      title?: string;
+      description?: string;
+      price?: number;
+      category?: string;
+      images?: string[];
+      login?: string;
+      password?: string;
+    }
+  ) {
+    const set: Record<string, unknown> = {};
+
+    if (patch.title !== undefined) {
+      const title = patch.title.trim();
+      if (title.length < 3 || title.length > 120) throw Object.assign(new Error('Nom 3–120 belgi bo‘lsin'), { status: 400 });
+      set.title = title;
+    }
+    if (patch.description !== undefined) {
+      const description = patch.description.trim();
+      if (description.length < 20 || description.length > 4000) {
+        throw Object.assign(new Error('Tavsif 20–4000 belgi bo‘lsin'), { status: 400 });
+      }
+      set.description = description;
+    }
+    if (patch.price !== undefined) {
+      if (!Number.isSafeInteger(patch.price) || patch.price < 1000 || patch.price > 1_000_000_000) {
+        throw Object.assign(new Error('Narx 1 000–1 000 000 000 so‘m orasida bo‘lsin'), { status: 400 });
+      }
+      set.price = patch.price;
+    }
+    if (patch.category !== undefined) {
+      if (!(CATEGORIES as readonly string[]).includes(patch.category)) {
+        throw Object.assign(new Error('Kategoriya noto‘g‘ri'), { status: 400 });
+      }
+      set.category = patch.category;
+    }
+    if (patch.images !== undefined) {
+      if (patch.images.length > config.maxProductImages) {
+        throw Object.assign(new Error(`Ko‘pi bilan ${config.maxProductImages} ta rasm`), { status: 400 });
+      }
+      set.images = patch.images;
+    }
+    if (patch.login !== undefined) {
+      if (!patch.login.length || patch.login.length > 200) throw Object.assign(new Error('Login 1–200 belgi bo‘lsin'), { status: 400 });
+      set['sensitiveData.login'] = encryptSecret(patch.login);
+    }
+    if (patch.password !== undefined) {
+      if (!patch.password.length || patch.password.length > 200) throw Object.assign(new Error('Parol 1–200 belgi bo‘lsin'), { status: 400 });
+      set['sensitiveData.password'] = encryptSecret(patch.password);
+    }
+    if (Object.keys(set).length === 0) throw Object.assign(new Error('O‘zgartirish yo‘q'), { status: 400 });
+
+    const updated = await Product.findOneAndUpdate(
+      { _id: productId, sellerId, status: { $in: ['active', 'pending_review', 'draft', 'rejected'] } },
+      { $set: set },
+      { new: true }
+    );
+    if (updated) {
+      // Never log credential values, only which fields changed.
+      await audit({
+        actorId: updated.sellerId as any,
+        action: 'product.edited',
+        targetType: 'Product',
+        targetId: updated._id as any,
+        after: { fields: Object.keys(set).map((key) => key.replace('sensitiveData.', 'credentials.')) },
+      });
+    }
+    return updated;
   }
 
   async cancelListing(productId: string, sellerId: string) {

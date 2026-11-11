@@ -4,7 +4,7 @@ import { mongoSessionStore } from './core';
 import { User } from './core';
 import { notificationService } from './core';
 import { startHandler, createPayoutWizards, keyboardFor } from './handlers/start';
-import { sellerHandler, createSellerWizard, createDealWizard } from './handlers/seller';
+import { sellerHandler, createSellerWizard, createDealWizard, createListingEditWizard } from './handlers/seller';
 import { buyerHandler, createCodeWizard } from './handlers/buyer';
 import { adminHandler, createRoleWizard } from './handlers/admin';
 import { marketplace } from './core';
@@ -33,6 +33,7 @@ export async function createBot(): Promise<Telegraf<any> | null> {
   const stage = new Scenes.Stage<any>([
     createSellerWizard(),
     createDealWizard(),
+    createListingEditWizard(),
     createCodeWizard(),
     createRoleWizard(),
     ...createPayoutWizards(),

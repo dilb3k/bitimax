@@ -10,6 +10,7 @@
  * whose name isn't explicitly a test database, because this script wipes collections.
  */
 import mongoose from 'mongoose';
+import { decryptSecret } from '../utils/crypto';
 import { config } from '../config';
 import { connectDatabase } from '../db/mongoose';
 import { User } from '../models/User';
@@ -328,6 +329,19 @@ async function scenarioPrivateDeal() {
   ));
   check('noto‘g‘ri kod hech narsa qaytarmaydi', (await marketplace.findDealByCode('AAAA2222')) === null);
 
+  // The seller can edit an unsold listing; the edit is atomic and re-encrypts credentials.
+  const edited = await marketplace.updateListing(String(deal._id), String(seller._id), {
+    title: 'Yangilangan nom',
+    description: 'Yangilangan tavsif, kamida yigirma belgi bo‘lishi kerak.',
+    password: 'yangi-parol',
+  });
+  eq('tahrir: nom yangilandi', edited!.title, 'Yangilangan nom');
+  eq('tahrir: parol qayta shifrlandi', decryptSecret(edited!.sensitiveData.password), 'yangi-parol');
+  check('tahrir: login saqlanib qoldi', Boolean(decryptSecret(edited!.sensitiveData.login)));
+  eq('tahrir: boshqa sotuvchi e’lonni o‘zgartira olmaydi', await marketplace.updateListing(String(deal._id), String(buyer._id), { title: 'Hujum' }), null);
+  await expectThrow('tahrir: noto‘g‘ri narx rad etiladi', () => marketplace.updateListing(String(deal._id), String(seller._id), { price: 5 }));
+  await expectThrow('tahrir: noto‘g‘ri kategoriya rad etiladi', () => marketplace.updateListing(String(deal._id), String(seller._id), { category: 'Hack' }));
+
   // The id alone must never open a private deal; only the code does.
   await expectThrow(
     'yopiq bitimni kodsiz (faqat ID bilan) band qilib bo‘lmaydi',
@@ -342,6 +356,7 @@ async function scenarioPrivateDeal() {
 
   // Buyer redeems and pays.
   const purchase = await marketplace.initiatePurchase(String(deal._id), String(buyer._id), deal.dealCode!);
+  eq('tahrir: band qilingan e’lonni o‘zgartirib bo‘lmaydi', await marketplace.updateListing(String(deal._id), String(seller._id), { title: 'Kech' }), null);
   const paid = await payFor(purchase.uniqueAmount, 'deal');
   eq('kafil bitim to‘lovi tasdiqlandi', paid.matched, true);
 

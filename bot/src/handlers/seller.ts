@@ -205,6 +205,41 @@ async function showMyListings(ctx: any, requestedPage = 1, edit = false) {
   else await ctx.reply(text, options);
 }
 sellerHandler.hears(['📋 E’lonlarim', 'E’lonlarim', '📋 Mening e’lonlarim', 'Mening e’lonlarim'], ctx => showMyListings(ctx));
+/** Only a listing nobody has reserved or bought can change: terms must not move under a payer. */
+const EDITABLE_STATUSES = ['active', 'pending_review', 'draft', 'rejected'];
+export const LISTING_EDIT_WIZARD = 'listing_edit';
+
+const EDIT_FIELDS: Array<{ key: string; label: string }> = [
+  { key: 'title', label: '📝 Nomi' },
+  { key: 'desc', label: '📄 Tavsif' },
+  { key: 'price', label: '💰 Narx' },
+  { key: 'cat', label: '🗂 Kategoriya' },
+  { key: 'photo', label: '📷 Rasmlar' },
+  { key: 'login', label: '🔐 Login va parol' },
+];
+
+sellerHandler.action(/^listing_edit_([a-f0-9]{24})$/, async ctx => {
+  const user = await User.findOne({ telegramId: ctx.from.id });
+  const p = user && await Product.findOne({ _id: ctx.match[1], sellerId: user._id }).select('-sensitiveData');
+  if (!p) return void await ctx.answerCbQuery('E’lon topilmadi');
+  if (!EDITABLE_STATUSES.includes(p.status)) {
+    return void await ctx.answerCbQuery('Band qilingan yoki sotilgan e’lonni tahrirlab bo‘lmaydi', { show_alert: true });
+  }
+  await ctx.answerCbQuery();
+  const rows = EDIT_FIELDS.map(f => [{ text: f.label, callback_data: `le_${f.key}_${p._id}` }]);
+  rows.push([{ text: '← Ortga', callback_data: `my_listing_${p._id}` }]);
+  await ctx.editMessageText(
+    `<b>✏️ Tahrirlash</b>\n\n<b>${escapeHtml(p.title)}</b>\nNarx: <b>${formatUzs(p.price)}</b>\n\nQaysi qismini o‘zgartirasiz?`,
+    { parse_mode: 'HTML', reply_markup: { inline_keyboard: rows } }
+  );
+});
+
+sellerHandler.action(/^le_(title|desc|price|cat|photo|login)_([a-f0-9]{24})$/, async ctx => {
+  await ctx.answerCbQuery();
+  (ctx as any).session.editData = { id: ctx.match[2], field: ctx.match[1], stage: 0, images: [] };
+  await (ctx as any).scene.enter(LISTING_EDIT_WIZARD);
+});
+
 sellerHandler.action(/^my_listings_(\d+)$/, async ctx => { await ctx.answerCbQuery(); await showMyListings(ctx, Number(ctx.match[1]), true); });
 sellerHandler.action(/^my_listing_([a-f0-9]{24})$/, async ctx => {
   const user = await User.findOne({ telegramId: ctx.from.id });
@@ -212,7 +247,10 @@ sellerHandler.action(/^my_listing_([a-f0-9]{24})$/, async ctx => {
   if (!p) return void await ctx.answerCbQuery('E’lon topilmadi');
   await ctx.answerCbQuery();
   const rows: any[][] = [];
-  if (['active', 'pending_review', 'draft', 'rejected'].includes(p.status)) rows.push([{ text: 'E’lonni bekor qilish', callback_data: `listing_cancel_ask_${p._id}` }]);
+  if (EDITABLE_STATUSES.includes(p.status)) {
+    rows.push([{ text: '✏️ Tahrirlash', callback_data: `listing_edit_${p._id}` }]);
+    rows.push([{ text: 'E’lonni bekor qilish', callback_data: `listing_cancel_ask_${p._id}` }]);
+  }
   rows.push([{ text: '← E’lonlarim', callback_data: 'my_listings_1' }]);
   await ctx.editMessageText([
     `<b>${escapeHtml(p.title)}</b>`, `ID: <code>${p.listingCode || '—'}</code>`,
@@ -728,6 +766,162 @@ export function createSellerWizard() {
       );
 
       return ctx.scene.leave();
+    }
+  );
+}
+
+// ───────────────────────────── editing a listing ─────────────────────────────
+
+function editPrompt(ed: any): { text: string; extra?: any } {
+  const cancel = { inline_keyboard: [[{ text: 'Bekor qilish', callback_data: 'edit_cancel' }]] };
+  switch (ed.field) {
+    case 'title':
+      return { text: '<b>📝 Yangi nom</b>\n\nYangi nomni yozing (3–120 belgi):', extra: { reply_markup: cancel } };
+    case 'desc':
+      return { text: '<b>📄 Yangi tavsif</b>\n\nTo‘liq tavsifni yozing (20–4000 belgi):', extra: { reply_markup: cancel } };
+    case 'price':
+      return { text: `<b>💰 Yangi narx</b>\n\nNarxni so‘mda kiriting (faqat raqam):\n\n${commissionNotice()}`, extra: { reply_markup: cancel } };
+    case 'cat':
+      return {
+        text: '<b>🗂 Yangi kategoriya</b>\n\nTugmalardan birini tanlang:',
+        extra: { reply_markup: { keyboard: CATEGORIES.map((c) => [c]), resize_keyboard: true, one_time_keyboard: true } },
+      };
+    case 'photo':
+      return {
+        text: [
+          '<b>📷 Rasmlar</b>',
+          '',
+          `Yangi rasmlarni bittalab yuboring (${config.maxProductImages} tagacha). Tayyor bo‘lgach “Almashtirish” ni bosing —`,
+          'hozirgi rasmlar yangilariga almashtiriladi.',
+          '',
+          `<i>Qo‘shildi: ${ed.images?.length || 0}/${config.maxProductImages}</i>`,
+        ].join('\n'),
+        extra: {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '✅ Almashtirish', callback_data: 'edit_photos_done' }],
+              [{ text: '🗑 Barcha rasmlarni o‘chirish', callback_data: 'edit_photos_clear' }],
+              [{ text: 'Bekor qilish', callback_data: 'edit_cancel' }],
+            ],
+          },
+        },
+      };
+    default:
+      return {
+        text: ed.stage === 0 ? '<b>🔐 Yangi login</b>\n\nYangi loginni (email yoki username) yozing:' : '<b>🔐 Yangi parol</b>\n\nEndi yangi parolni yozing:',
+        extra: { reply_markup: cancel },
+      };
+  }
+}
+
+export function createListingEditWizard() {
+  const leave = async (ctx: any, note?: string) => {
+    const id = ctx.session.editData?.id;
+    ctx.session.editData = undefined;
+    if (note) await ctx.reply(note, mainMenuKeyboard);
+    if (id) {
+      await ctx.reply('E’longa qaytish:', { reply_markup: { inline_keyboard: [[{ text: '📋 E’lon', callback_data: `my_listing_${id}` }]] } });
+    }
+    return ctx.scene.leave();
+  };
+
+  /** Applies the patch; a validation error keeps the seller on the step so they can retype. */
+  const apply = async (ctx: any, patch: Record<string, unknown>) => {
+    const ed = ctx.session.editData;
+    const user = await User.findOne({ telegramId: ctx.from.id });
+    if (!user) return leave(ctx, 'Avval /start bosing.');
+    try {
+      const updated = await marketplace.updateListing(ed.id, String(user._id), patch as any);
+      if (!updated) return leave(ctx, 'E’lon topilmadi yoki savdo boshlangan — endi tahrirlab bo‘lmaydi.');
+      return leave(ctx, '✅ E’lon yangilandi.');
+    } catch (error: any) {
+      if (error?.status === 400) {
+        await ctx.reply(`⚠️ ${error.message}. Qaytadan kiriting:`);
+        return;
+      }
+      console.error('[Bot] listing edit failed:', error);
+      return leave(ctx, 'Xatolik yuz berdi. Qayta urinib ko‘ring.');
+    }
+  };
+
+  return new Scenes.WizardScene<any>(
+    LISTING_EDIT_WIZARD,
+    async (ctx: any) => {
+      const ed = ctx.session.editData;
+      if (!ed?.id || !ed.field) {
+        await ctx.reply('Xatolik yuz berdi. E’lonlarim bo‘limidan qayta boshlang.', mainMenuKeyboard);
+        return ctx.scene.leave();
+      }
+      const { text, extra } = editPrompt(ed);
+      await ctx.replyWithHTML(text, extra);
+      return ctx.wizard.next();
+    },
+    async (ctx: any) => {
+      if (await bailIfCancelled(ctx, ['editData'])) return;
+      const ed = ctx.session.editData;
+      if (!ed?.id) return ctx.scene.leave();
+
+      const action = ctx.callbackQuery?.data;
+      if (action) await ctx.answerCbQuery().catch(() => undefined);
+      if (action === 'edit_cancel') return leave(ctx, 'Bekor qilindi.');
+
+      if (ed.field === 'photo') {
+        if (action === 'edit_photos_clear') return apply(ctx, { images: [] });
+        if (action === 'edit_photos_done') {
+          if (!ed.images?.length) return void (await ctx.reply('Hali rasm yuborilmadi. Rasm yuboring yoki “Bekor qilish” ni bosing.'));
+          return apply(ctx, { images: ed.images });
+        }
+        const sizes = ctx.message?.photo;
+        if (sizes?.length) {
+          if ((ed.images?.length || 0) >= config.maxProductImages) {
+            return void (await ctx.reply(`Ko‘pi bilan ${config.maxProductImages} ta rasm. “Almashtirish” ni bosing.`));
+          }
+          try {
+            const url = await uploadTelegramPhoto(ctx.telegram, sizes[sizes.length - 1].file_id);
+            ed.images = [...(ed.images || []), url];
+            ctx.session.editData = ed;
+            const { text, extra } = editPrompt(ed);
+            await ctx.replyWithHTML(text, extra);
+          } catch (error: any) {
+            await ctx.reply(`⚠️ ${error instanceof ImageUploadError ? error.message : 'Rasm yuklanmadi, qayta urinib ko‘ring.'}`);
+          }
+          return;
+        }
+        if (ctx.message?.document) {
+          return void (await ctx.reply('Rasmni fayl emas, oddiy rasm (Photo) ko‘rinishida yuboring.'));
+        }
+        return void (await ctx.reply('Rasm yuboring yoki tugmalardan birini tanlang.'));
+      }
+
+      const text = ctx.message?.text?.trim();
+      if (!text) return void (await ctx.reply('Matn yuboring yoki “Bekor qilish” ni bosing.'));
+
+      switch (ed.field) {
+        case 'title':
+          return apply(ctx, { title: text });
+        case 'desc':
+          return apply(ctx, { description: text.slice(0, 4000) });
+        case 'price': {
+          const price = /^\d[\d\s]*$/.test(text) ? Number(text.replace(/\s/g, '')) : NaN;
+          if (!Number.isSafeInteger(price)) return void (await ctx.reply('Faqat butun raqam kiriting (masalan: 250000):'));
+          return apply(ctx, { price });
+        }
+        case 'cat':
+          if (!CATEGORIES.includes(text)) return void (await ctx.reply('Kategoriyani tugmalardan tanlang.'));
+          return apply(ctx, { category: text });
+        default: {
+          if (ed.stage === 0) {
+            ed.login = text;
+            ed.stage = 1;
+            ctx.session.editData = ed;
+            await ctx.deleteMessage().catch(() => undefined);
+            const next = editPrompt(ed);
+            return void (await ctx.replyWithHTML(next.text, next.extra));
+          }
+          await ctx.deleteMessage().catch(() => undefined);
+          return apply(ctx, { login: ed.login, password: text });
+        }
+      }
     }
   );
 }
