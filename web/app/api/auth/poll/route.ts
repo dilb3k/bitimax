@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
  * moment it matters — turns an approval into this browser's session cookie.
  */
 export async function GET() {
-  const pairToken = cookies().get(PAIR_COOKIE)?.value;
+  const pairToken = (await cookies()).get(PAIR_COOKIE)?.value;
   if (!pairToken) return NextResponse.json({ status: 'expired' });
 
   try {

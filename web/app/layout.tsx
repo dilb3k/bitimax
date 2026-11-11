@@ -53,10 +53,10 @@ const noFlashTheme = `
   if (dark) document.documentElement.classList.add('dark');
 }catch(e){}})();`;
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Middleware mints one nonce per request; the page's only inline script carries it, so
   // `script-src` can stay strict instead of falling back to 'unsafe-inline'.
-  const nonce = headers().get('x-nonce') ?? undefined;
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
 
   return (
     <html lang="uz" className={body.variable} suppressHydrationWarning>

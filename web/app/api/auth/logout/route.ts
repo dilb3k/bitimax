@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 /** Ends the session everywhere (the backend stamps the account), then clears this browser. */
 export async function POST(request: Request) {
-  if (!isSameOrigin(request)) {
+  if (!(await isSameOrigin(request))) {
     return NextResponse.json({ error: 'So‘rov rad etildi' }, { status: 403 });
   }
 

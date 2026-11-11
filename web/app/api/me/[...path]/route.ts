@@ -34,7 +34,7 @@ async function proxy(request: Request, segments: string[]) {
   if (!path) return NextResponse.json({ error: 'Noto‘g‘ri so‘rov' }, { status: 400 });
 
   const method = request.method.toUpperCase();
-  if (method !== 'GET' && !isSameOrigin(request)) {
+  if (method !== 'GET' && !(await isSameOrigin(request))) {
     return NextResponse.json({ error: 'So‘rov rad etildi' }, { status: 403 });
   }
 
@@ -79,14 +79,14 @@ async function proxy(request: Request, segments: string[]) {
   }
 }
 
-export async function GET(request: Request, { params }: { params: { path: string[] } }) {
-  return proxy(request, params.path);
+export async function GET(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
+  return proxy(request, (await params).path);
 }
 
-export async function POST(request: Request, { params }: { params: { path: string[] } }) {
-  return proxy(request, params.path);
+export async function POST(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
+  return proxy(request, (await params).path);
 }
 
-export async function PATCH(request: Request, { params }: { params: { path: string[] } }) {
-  return proxy(request, params.path);
+export async function PATCH(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
+  return proxy(request, (await params).path);
 }
