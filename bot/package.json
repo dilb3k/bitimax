@@ -1,0 +1,30 @@
+{
+  "name": "bitimax-bot",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Bitimax Telegram bot service (webhook in production, long polling in dev)",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/bot/src/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test:marketplace": "node --import tsx src/scripts/marketplace-regression.ts"
+  },
+  "dependencies": {
+    "dayjs": "^1.11.10",
+    "dotenv": "^16.4.1",
+    "express": "^4.18.2",
+    "helmet": "^7.2.0",
+    "mongoose": "^8.1.0",
+    "telegraf": "^4.16.3",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.5",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

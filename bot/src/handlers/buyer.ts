@@ -1,15 +1,15 @@
 import { Composer, Scenes } from 'telegraf';
 import { sendCatalogPage, sendProductDetail } from './catalog';
-import { User } from '../../models/User';
-import { Product } from '../../models/Product';
-import { EscrowHold } from '../../models/EscrowHold';
-import { Transaction } from '../../models/Transaction';
-import { botApi } from '../services/api';
-import { notificationService } from '../../services/notificationService';
-import { paymentService } from '../../services/paymentService';
-import { describeRefundPolicy } from '../../services/refundEngine';
-import { config } from '../../config';
-import { escapeHtml, formatUzs, formatDeadline, formatCardNumber } from '../../utils/helpers';
+import { User } from '../core';
+import { Product } from '../core';
+import { EscrowHold } from '../core';
+import { Transaction } from '../core';
+import { marketplace } from '../core';
+import { notificationService } from '../core';
+import { paymentService } from '../core';
+import { describeRefundPolicy } from '../core';
+import { config } from '../core';
+import { escapeHtml, formatUzs, formatDeadline, formatCardNumber } from '../core';
 import { bailIfCancelled } from '../wizards/guard';
 import { describeError } from '../utils/errors';
 import {
@@ -62,7 +62,7 @@ export function createCodeWizard() {
       const user = await User.findOne({ telegramId: ctx.from!.id });
       if (!user) return ctx.scene.leave();
 
-      const deal = await botApi.findDealByCode(raw);
+      const deal = await marketplace.findDealByCode(raw);
 
       if (!deal) {
         ctx.session.codeTries = (ctx.session.codeTries || 0) + 1;
@@ -171,7 +171,7 @@ buyerHandler.action(/^buy_(.+)$/, async (ctx) => {
     }
 
     await ctx.answerCbQuery('To‘lov tayyorlanmoqda…');
-    const { product, uniqueAmount, card, expiresAt, paymentProvider } = await botApi.initiatePurchase(
+    const { product, uniqueAmount, card, expiresAt, paymentProvider } = await marketplace.initiatePurchase(
       productId,
       user._id.toString()
     );
@@ -343,7 +343,7 @@ buyerHandler.hears(["📦 Mening buyurtmalarim","Mening buyurtmalarim","📦 Buy
   if (!user) return;
 
   const [escrows, otherTransactions] = await Promise.all([
-    botApi.getEscrowHolds(user._id.toString(), 'buyer'),
+    marketplace.getEscrowHolds(user._id.toString(), 'buyer'),
     Transaction.find({
       buyerId: user._id,
       status: { $in: ['pending_payment', 'expired'] },
@@ -503,7 +503,7 @@ buyerHandler.action(/^refund_escrow_(.+)$/, async (ctx) => {
   if (!quote.allowed) {
     await ctx.editMessageText(
       `❌ <b>Avtomatik qaytarish mumkin emas</b>\n\n${quote.message}\n\n` +
-        `Nizo ochish uchun: ${botApi.supportLink()}`,
+        `Nizo ochish uchun: ${marketplace.supportLink()}`,
       { parse_mode: 'HTML' }
     );
     await ctx.answerCbQuery();
@@ -629,7 +629,7 @@ buyerHandler.action(/^rdo_(not_working|wrong_info|recovered|other)_(.+)$/, async
           `Sizga kompensatsiya: <b>${formatUzs(result.sellerKeeps ?? 0)}</b>`,
           '',
           `<i>Agar xaridor akkauntni o‘zlashtirib olib qaytargan bo‘lsa — dalil bilan ` +
-            `nizo oching: ${botApi.supportLink()}</i>`,
+            `nizo oching: ${marketplace.supportLink()}</i>`,
         ].join('\n')
       );
     }

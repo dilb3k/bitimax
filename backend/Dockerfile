@@ -1,4 +1,4 @@
-# Bitmax backend — API + Telegram bot + scheduler in one process.
+# Bitimax backend — HTTP API + scheduler. The Telegram bot is a separate service (../bot).
 #
 # This is a long-running stateful service (Telegraf long-polling and setInterval sweeps),
 # so it cannot run on a serverless platform. Any host that runs a container works:

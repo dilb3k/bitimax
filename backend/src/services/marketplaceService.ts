@@ -1,11 +1,11 @@
 import crypto from 'crypto';
-import { User, IUser } from '../../models/User';
-import { Product } from '../../models/Product';
-import { Transaction } from '../../models/Transaction';
-import { EscrowHold } from '../../models/EscrowHold';
-import { paymentService } from '../../services/paymentService';
-import { config } from '../../config';
-import { generateDealCode, normalizeDealCode } from '../../utils/helpers';
+import { User, IUser } from '../models/User';
+import { Product } from '../models/Product';
+import { Transaction } from '../models/Transaction';
+import { EscrowHold } from '../models/EscrowHold';
+import { paymentService } from './paymentService';
+import { config } from '../config';
+import { generateDealCode, normalizeDealCode } from '../utils/helpers';
 
 export class BlockedUserError extends Error {
   constructor(reason?: string) {
@@ -14,7 +14,7 @@ export class BlockedUserError extends Error {
   }
 }
 
-export class BotApiService {
+export class MarketplaceService {
   async getOrCreateUser(telegramId: number, ctx: any): Promise<IUser> {
     const from = ctx.from || {};
 
@@ -225,4 +225,4 @@ export class BotApiService {
   }
 }
 
-export const botApi = new BotApiService();
+export const marketplace = new MarketplaceService();

@@ -1,53 +1,79 @@
-# Render Blueprint for the Bitmax backend.
+# Render Blueprint for Bitimax — two independent services from one repository.
 #
-# Import in the Render dashboard: New → Blueprint → pick this repository.
+#   bitimax-api  (rootDir: backend)  HTTP API, payment callbacks, scheduler. Talks to the website.
+#   bitimax-bot  (rootDir: bot)      Telegram bot (webhook). Never exposed to the website.
 #
-# API, Telegram webhook bot and scheduler share one process.
-# Free plan selected by the owner. Incoming Telegram webhooks can wake the service;
-# scheduled payment/escrow work is delayed while Render sleeps.
+# Both read/write the same MongoDB. The website (Vercel) only ever calls bitimax-api.
+# Secrets use `sync: false`: Render asks for the value in the dashboard; nothing secret is
+# committed. ENCRYPTION_KEY, BOT_TOKEN, MONGODB_URI, ADMIN_CHAT_ID and the HAMYON_* values
+# must be IDENTICAL in both services.
 
 services:
+  # ───────────────────────────── API ─────────────────────────────
   - type: web
-    name: bitimax-bot
+    name: bitimax-api
     runtime: node
-    plan: free # owner-selected; background jobs pause during sleep
-    region: frankfurt # closest Render region to Uzbekistan
+    plan: free
+    region: frankfurt
     rootDir: backend
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
-
+    buildFilter:
+      paths:
+        - backend/**
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3001
-
-      # ─── Secrets: sync:false means Render prompts for the value and never stores it
-      #     in this file. Nothing secret is ever committed to the repository.
       - key: MONGODB_URI
         sync: false
       - key: BOT_TOKEN
         sync: false
       - key: ADMIN_CHAT_ID
         sync: false
-      - key: WEBHOOK_SECRET
+      - key: ADMIN_IDS
         sync: false
-      - key: INTERNAL_API_KEY
-        sync: false
-      # Signs website session tokens. Rotating it only logs everybody out of the site.
-      - key: SESSION_SECRET
-        generateValue: true
-      # Losing this makes every stored credential permanently unreadable. Back it up
-      # somewhere outside Render before the first deploy.
       - key: ENCRYPTION_KEY
         sync: false
-      # JSON array of the bank cards buyers transfer into.
+      # API-only secrets (the bot service deliberately does not get these).
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: WEBHOOK_SECRET
+        generateValue: true
+      - key: INTERNAL_API_KEY
+        generateValue: true
+      # Shared with the website (set the same value as WEB_PROXY_KEY on Vercel).
+      - key: WEB_PROXY_KEY
+        sync: false
+      - key: ENABLE_INTERNAL_API
+        value: false
+      - key: ALLOW_SELF_PURCHASE
+        value: false
+      - key: PAYMENT_PROVIDER
+        value: hamyon
+      - key: HAMYON_BASE_URL
+        value: https://hamyon-api.uz
+      - key: HAMYON_SHOP_ID
+        sync: false
+      - key: HAMYON_SHOP_KEY
+        sync: false
       - key: PAYMENT_CARDS
         sync: false
-
-      # ─── Business rules: safe to keep in the repo, tune without redeploying secrets.
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: SITE_URL
+        value: https://web-three-eosin-46.vercel.app
+      - key: CORS_ORIGINS
+        sync: false
+      - key: BOT_USERNAME
+        sync: false
+      - key: SUPPORT_USERNAME
+        sync: false
       - key: PLATFORM_COMMISSION
         value: 7
       - key: PAYMENT_WINDOW_MINUTES
@@ -62,19 +88,77 @@ services:
         value: 3
       - key: CREDENTIAL_RETENTION_DAYS
         value: 30
+      # Exactly one instance may run the expiry / auto-release / reconciliation sweeps.
+      - key: JOBS_ENABLED
+        value: true
 
-      # ─── Web
+  # ───────────────────────────── Telegram bot ─────────────────────────────
+  - type: web
+    name: bitimax-bot
+    runtime: node
+    plan: free
+    region: frankfurt
+    rootDir: bot
+    # The bot compiles the shared domain code from ../backend, so a change there redeploys it too.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - bot/**
+        - backend/src/**
+        - backend/package.json
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_ROLE
+        value: bot
+      - key: MONGODB_URI
+        sync: false
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_CHAT_ID
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: ALLOW_SELF_PURCHASE
+        value: false
+      - key: PAYMENT_PROVIDER
+        value: hamyon
+      - key: HAMYON_BASE_URL
+        value: https://hamyon-api.uz
+      - key: HAMYON_SHOP_ID
+        sync: false
+      - key: HAMYON_SHOP_KEY
+        sync: false
+      - key: PAYMENT_CARDS
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
       - key: SITE_URL
         value: https://web-three-eosin-46.vercel.app
-      - key: CORS_ORIGINS
-        sync: false
       - key: BOT_USERNAME
         sync: false
       - key: SUPPORT_USERNAME
         sync: false
-
-      # Only one instance may run the expiry / auto-release / reconciliation sweeps.
-      # If this service is ever scaled past one instance, the extras must set this to
-      # false, or every sweep runs several times over.
-      - key: JOBS_ENABLED
-        value: true
+      - key: PLATFORM_COMMISSION
+        value: 7
+      - key: PAYMENT_WINDOW_MINUTES
+        value: 10
+      - key: AUTO_RELEASE_HOURS
+        value: 24
+      - key: UNREVEALED_GRACE_HOURS
+        value: 72
+      - key: MIN_PAYOUT_AMOUNT
+        value: 10000
+      - key: REFUND_ABUSE_THRESHOLD
+        value: 3
+      - key: CREDENTIAL_RETENTION_DAYS
+        value: 30

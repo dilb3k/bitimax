@@ -19,7 +19,7 @@ import { EscrowHold } from '../models/EscrowHold';
 import { LedgerEntry } from '../models/LedgerEntry';
 import { PaymentInbox } from '../models/PaymentInbox';
 import { Payout } from '../models/Payout';
-import { botApi } from '../bot/services/api';
+import { marketplace } from '../services/marketplaceService';
 import {
   paymentService,
   ProductUnavailableError,
@@ -117,7 +117,7 @@ async function scenarioPublicSale() {
   const seller = await makeUser(9001, 'seller_ali', 'seller');
   const buyer = await makeUser(9002, 'buyer_vali', 'buyer');
 
-  const product = await botApi.createProduct({
+  const product = await marketplace.createProduct({
     sellerId: String(seller._id),
     title: 'Instagram 12k obunachi',
     description: 'O‘zbekistonlik auditoriya, 2019-yildan beri faol, ban tarixi yo‘q.',
@@ -128,14 +128,10 @@ async function scenarioPublicSale() {
     recoveryCode: 'REC-42',
   });
 
-  eq('yangi e’lon moderatsiyaga tushadi', product.status, 'pending_review');
-
-  const inCatalogBefore = await Product.countDocuments({ status: 'active', listingType: 'public' });
-  eq('moderatsiyadagi e’lon katalogda ko‘rinmaydi', inCatalogBefore, 0);
-
-  // Moderator approves.
-  await Product.updateOne({ _id: product._id }, { $set: { status: 'active' } });
-  const catalog = await botApi.getActiveProducts(1, 10);
+  // Sellers confirm the listing themselves; it goes live directly (no moderation queue).
+  eq('tasdiqlangan e’lon darhol faol bo‘ladi', product.status, 'active');
+  eq('e’lon katalogda ko‘rinadi', await Product.countDocuments({ status: 'active', listingType: 'public' }), 1);
+  const catalog = await marketplace.getActiveProducts(1, 10);
   eq('tasdiqlangach katalogda ko‘rinadi', catalog.total, 1);
 
   // Credentials must never be readable from a serialized product.
@@ -152,7 +148,7 @@ async function scenarioPublicSale() {
   );
 
   // Buyer starts a purchase.
-  const purchase = await botApi.initiatePurchase(String(product._id), String(buyer._id));
+  const purchase = await marketplace.initiatePurchase(String(product._id), String(buyer._id));
   check('to‘lov summasi narxdan katta (unikal quyruq)', purchase.uniqueAmount > 1_000_000);
   check('quyruq 1000 so‘mdan kichik', purchase.uniqueAmount - 1_000_000 < 1000);
 
@@ -163,13 +159,13 @@ async function scenarioPublicSale() {
   const buyer2 = await makeUser(9003, 'buyer_rustam', 'buyer');
   await expectThrow(
     'ikkinchi xaridor band mahsulotni ololmaydi',
-    () => botApi.initiatePurchase(String(product._id), String(buyer2._id)),
+    () => marketplace.initiatePurchase(String(product._id), String(buyer2._id)),
     ProductUnavailableError
   );
 
   // Seller can't buy their own listing — checked on a separate product so the purchase
   // already in flight above is left untouched.
-  const ownProduct = await botApi.createDeal({
+  const ownProduct = await marketplace.createDeal({
     sellerId: String(seller._id),
     title: 'O‘z mahsuloti',
     price: 50_000,
@@ -178,7 +174,7 @@ async function scenarioPublicSale() {
   });
   await expectThrow(
     'sotuvchi o‘z mahsulotini sotib ololmaydi',
-    () => botApi.initiatePurchase(String(ownProduct._id), String(seller._id)),
+    () => marketplace.initiatePurchase(String(ownProduct._id), String(seller._id)),
     ForbiddenError
   );
   const releasedBack = await Product.findById(ownProduct._id);
@@ -307,7 +303,7 @@ async function scenarioPrivateDeal() {
   const seller = await makeUser(9101, 'deal_seller', 'seller');
   const buyer = await makeUser(9102, 'deal_buyer', 'buyer');
 
-  const deal = await botApi.createDeal({
+  const deal = await marketplace.createDeal({
     sellerId: String(seller._id),
     title: 'PUBG akkaunt — Conqueror',
     price: 500_000,
@@ -321,19 +317,19 @@ async function scenarioPrivateDeal() {
   console.log(`     kod: ${formatDealCode(deal.dealCode!)}`);
 
   // The whole point: it must be invisible to everyone without the code.
-  const publicList = await botApi.getActiveProducts(1, 50);
+  const publicList = await marketplace.getActiveProducts(1, 50);
   const leaked = publicList.products.some((p: any) => String(p._id) === String(deal._id));
   check('yopiq bitim katalogda KO‘RINMAYDI', !leaked);
 
-  const found = await botApi.findDealByCode(deal.dealCode!);
+  const found = await marketplace.findDealByCode(deal.dealCode!);
   check('kod bo‘yicha topiladi', Boolean(found));
   check('kod kichik harf va tire bilan ham ishlaydi', Boolean(
-    await botApi.findDealByCode(formatDealCode(deal.dealCode!).toLowerCase())
+    await marketplace.findDealByCode(formatDealCode(deal.dealCode!).toLowerCase())
   ));
-  check('noto‘g‘ri kod hech narsa qaytarmaydi', (await botApi.findDealByCode('AAAA2222')) === null);
+  check('noto‘g‘ri kod hech narsa qaytarmaydi', (await marketplace.findDealByCode('AAAA2222')) === null);
 
   // Buyer redeems and pays.
-  const purchase = await botApi.initiatePurchase(String(deal._id), String(buyer._id));
+  const purchase = await marketplace.initiatePurchase(String(deal._id), String(buyer._id));
   const paid = await payFor(purchase.uniqueAmount, 'deal');
   eq('kafil bitim to‘lovi tasdiqlandi', paid.matched, true);
 
@@ -401,14 +397,14 @@ async function scenarioRefundAbuse() {
   const buyer = await makeUser(9202, 'abuse_buyer', 'buyer');
 
   for (let i = 0; i < config.refundAbuseThreshold; i++) {
-    const deal = await botApi.createDeal({
+    const deal = await marketplace.createDeal({
       sellerId: String(seller._id),
       title: `Akkaunt ${i}`,
       price: 100_000,
       login: `login${i}`,
       password: `pass${i}`,
     });
-    const purchase = await botApi.initiatePurchase(String(deal._id), String(buyer._id));
+    const purchase = await marketplace.initiatePurchase(String(deal._id), String(buyer._id));
     const paid = await payFor(purchase.uniqueAmount, `abuse${i}`);
     const escrow = await EscrowHold.findOne({ transactionId: paid.transaction._id });
     await paymentService.revealCredentials(String(escrow!._id), String(buyer._id));
@@ -484,14 +480,14 @@ async function scenarioSchedulers() {
   const buyer = await makeUser(9302, 'job_buyer', 'buyer');
 
   // (a) A payment window that lapses must free the listing again.
-  const p1 = await botApi.createDeal({
+  const p1 = await marketplace.createDeal({
     sellerId: String(seller._id),
     title: 'Muddati o‘tadigan bitim',
     price: 200_000,
     login: 'x',
     password: 'y',
   });
-  const pending = await botApi.initiatePurchase(String(p1._id), String(buyer._id));
+  const pending = await marketplace.initiatePurchase(String(p1._id), String(buyer._id));
   await Transaction.updateOne(
     { _id: pending.transaction._id },
     { $set: { expireAt: new Date(Date.now() - 1000) } }
@@ -505,14 +501,14 @@ async function scenarioSchedulers() {
   eq('mahsulot yana sotuvga qaytdi', freed!.status, 'active');
 
   // (b) Revealed + past deadline → seller gets paid.
-  const p2 = await botApi.createDeal({
+  const p2 = await marketplace.createDeal({
     sellerId: String(seller._id),
     title: 'Avtomatik yopiladigan',
     price: 300_000,
     login: 'a',
     password: 'b',
   });
-  const buy2 = await botApi.initiatePurchase(String(p2._id), String(buyer._id));
+  const buy2 = await marketplace.initiatePurchase(String(p2._id), String(buyer._id));
   const paid2 = await payFor(buy2.uniqueAmount, 'auto');
   const esc2 = await EscrowHold.findOne({ transactionId: paid2.transaction._id });
   await paymentService.revealCredentials(String(esc2!._id), String(buyer._id));
@@ -531,14 +527,14 @@ async function scenarioSchedulers() {
   );
 
   // (c) Never revealed + past grace → buyer gets everything back.
-  const p3 = await botApi.createDeal({
+  const p3 = await marketplace.createDeal({
     sellerId: String(seller._id),
     title: 'Ochilmagan buyurtma',
     price: 400_000,
     login: 'c',
     password: 'd',
   });
-  const buy3 = await botApi.initiatePurchase(String(p3._id), String(buyer._id));
+  const buy3 = await marketplace.initiatePurchase(String(p3._id), String(buyer._id));
   const paid3 = await payFor(buy3.uniqueAmount, 'unrevealed');
   const esc3 = await EscrowHold.findOne({ transactionId: paid3.transaction._id });
   await EscrowHold.updateOne(
@@ -558,7 +554,7 @@ async function scenarioSchedulers() {
   eq('mahsulot yana sotuvga qo‘yildi', relisted!.status, 'active');
 
   // (d) An unclaimed deal code must stop working after its window.
-  const p4 = await botApi.createDeal({
+  const p4 = await marketplace.createDeal({
     sellerId: String(seller._id),
     title: 'Ishlatilmagan kod',
     price: 150_000,
@@ -568,7 +564,7 @@ async function scenarioSchedulers() {
   await Product.updateOne({ _id: p4._id }, { $set: { dealExpiresAt: new Date(Date.now() - 1000) } });
   const killed = await expireUnclaimedDeals();
   check('muddati o‘tgan kod bekor qilindi', killed >= 1);
-  eq('eski kod endi ishlamaydi', await botApi.findDealByCode(p4.dealCode!), null);
+  eq('eski kod endi ishlamaydi', await marketplace.findDealByCode(p4.dealCode!), null);
 
   await assertLedgerBalanced('fon vazifalaridan keyin');
 }
@@ -583,10 +579,10 @@ async function scenarioBlockedUser() {
   await blocked.save();
 
   await expectThrow('bloklangan foydalanuvchi rad etiladi', async () =>
-    botApi.assertNotBlocked(await User.findById(blocked._id) as any)
+    marketplace.assertNotBlocked(await User.findById(blocked._id) as any)
   );
 
-  const deal = await botApi.createDeal({
+  const deal = await marketplace.createDeal({
     sellerId: String(seller._id),
     title: 'Bloklangan test',
     price: 100_000,

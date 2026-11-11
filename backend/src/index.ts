@@ -5,7 +5,8 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { config } from './config';
 import { connectDatabase } from './db/mongoose';
-import { startBot, telegramWebhook } from './bot';
+import { Telegram } from 'telegraf';
+import { notificationService } from './services/notificationService';
 import { startScheduler, stopScheduler } from './jobs/scheduler';
 import smsWebhookRoutes from './routes/smsWebhook';
 import productRoutes from './routes/products';
@@ -14,6 +15,8 @@ import escrowRoutes from './routes/escrow';
 import authRoutes from './routes/auth';
 import meRoutes from './routes/me';
 import { healthRoutes } from './routes/health';
+import { identifyWebProxy, requireWebProxy, clientIp } from './middleware/webProxy';
+import { rejectOperatorInjection } from './middleware/sanitize';
 
 const app = express();
 
@@ -30,8 +33,8 @@ app.use(
 );
 app.use(hamyonWebhook); // Own body parsers (urlencoded + JSON) and rate limit.
 app.use(express.json({ limit: '100kb' }));
-
-app.post('/api/telegram/webhook', telegramWebhook);
+app.use(rejectOperatorInjection);
+app.use(identifyWebProxy);
 
 app.use(healthRoutes);
 
@@ -41,16 +44,21 @@ const globalLimiter = rateLimit({
   limit: 120,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => clientIp(req),
 });
 app.use(globalLimiter);
 
-
-app.use('/api', smsWebhookRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/me', meRoutes);
+// The SMS-forwarder webhook can mark orders as paid, so it only exists while SMS is the
+// payment provider. With HamyonAPI the signed provider callback is the single way to pay.
+if (config.paymentProvider === 'sms') app.use('/api', smsWebhookRoutes);
+app.use('/api/auth', requireWebProxy, authRoutes);
+app.use('/api/me', requireWebProxy, meRoutes);
 app.use('/api/products', productRoutes);
-app.use('/api/transactions', transactionRoutes);
-app.use('/api/escrow', escrowRoutes);
+// Operator tooling (refund / release by raw escrow id). Not used by the site or the bot.
+if (config.enableInternalApi) {
+  app.use('/api/transactions', transactionRoutes);
+  app.use('/api/escrow', escrowRoutes);
+}
 
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'Not found' });
@@ -70,18 +78,22 @@ async function start() {
 
   app.listen(config.port, () => {
     console.log(`[Server] Bitmax API running on port ${config.port}`);
-    console.log(`[Server] SMS Webhook: POST /api/sms-webhook`);
+    if (config.paymentProvider === 'sms') console.log(`[Server] SMS Webhook: POST /api/sms-webhook`);
     console.log(`[Server] Products API: GET /api/products`);
     console.log(`[Server] Web auth: POST /api/auth/start · GET /api/auth/poll`);
     console.log(`[Server] Web cabinet: /api/me/* (session token)`);
-    console.log(`[Server] Transactions API: GET /api/transactions (internal)`);
-    console.log(`[Server] Escrow API: GET /api/escrow (internal)`);
+    if (config.enableInternalApi) console.log(`[Server] Internal API enabled: /api/transactions, /api/escrow`);
   });
 
-  // Runs the Telegram bot (long-polling) in this same process/service, sharing the
-  // one Mongo connection above. Keeps the whole platform to a single deployable
-  // service instead of paying for + operating two.
-  await startBot();
+  // The Telegram bot is a separate service (see /bot). The API only *sends* messages
+  // (payment confirmations, alerts) through a stateless client — it never receives updates.
+  if (config.botToken) {
+    notificationService.setTelegram(new Telegram(config.botToken));
+  } else if (config.isProd) {
+    throw new Error('[Server] BOT_TOKEN is required to deliver notifications');
+  } else {
+    console.warn('[Server] BOT_TOKEN not set — Telegram notifications are skipped.');
+  }
 
   // Payment expiry, escrow auto-settlement, reconciliation. Set JOBS_ENABLED=false on any
   // extra replica so only one instance sweeps.
@@ -91,6 +103,12 @@ async function start() {
     process.once(signal, () => stopScheduler());
   }
 }
+
+process.on('unhandledRejection', (reason) => console.error('[Server] Unhandled rejection:', reason));
+process.on('uncaughtException', (err) => {
+  console.error('[Server] Uncaught exception:', err);
+  process.exit(1);
+});
 
 start().catch((err) => {
   console.error('[Server] Fatal startup error:', err);

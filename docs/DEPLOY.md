@@ -1,15 +1,45 @@
-# Bitmax — Deploy qo'llanmasi
+# Bitimax — Deploy qo'llanmasi
 
-Arxitektura ikki qismdan iborat va ular **alohida** joylashtiriladi:
+Uch qism, uchalasi **alohida** joylashtiriladi:
 
-| Qism | Qayerda | Nega |
+| Qism | Qayerda | Vazifasi |
 |---|---|---|
-| `backend/` | **Render** (Docker, `starter` plan) | Doimiy ishlaydigan process: bot long-polling + scheduler |
-| `web/` | **Vercel** | Statik + SSR katalog |
+| `backend/` | **Render** — `bitimax-api` | HTTP API, Hamyon callback, scheduler (`JOBS_ENABLED=true`) |
+| `bot/` | **Render** — `bitimax-bot` | Telegram bot, webhook rejimida |
+| `web/` | **Vercel** | Sayt (SSR) |
 
-> ⚠️ Backend'ni Vercel'ga qo'yib bo'lmaydi. Vercel funksiyalari so'rov tugagach o'ladi — Telegraf long-polling va `setInterval` sweeplar ishlamaydi.
+> Backend va botni Vercel'ga qo'yib bo'lmaydi: scheduler (`setInterval`) va doimiy ulanishlar serverless'da o'ladi.
 
----
+## Servislar orasidagi sirlar
+
+| O'zgaruvchi | api | bot | web | Izoh |
+|---|:-:|:-:|:-:|---|
+| `MONGODB_URI`, `ENCRYPTION_KEY`, `BOT_TOKEN`, `ADMIN_CHAT_ID`, `HAMYON_*`, `PAYMENT_CARDS`, `CLOUDINARY_*` | ✅ | ✅ | | **Ikkalasida bir xil**. `ENCRYPTION_KEY` farq qilsa — parollar o'qilmaydi |
+| `SESSION_SECRET`, `WEBHOOK_SECRET`, `INTERNAL_API_KEY` | ✅ | ❌ | | Faqat API. Bot ularni olmaydi |
+| `WEB_PROXY_KEY` | ✅ | | ✅ | API va saytda **bir xil**. Qo'yilgach `/api/me` va `/api/auth` saytdan boshqaga yopiladi |
+| `BACKEND_URL` | | | ✅ | `https://<bitimax-api>.onrender.com` |
+| `SERVICE_ROLE=bot` | | ✅ | | Botni "kam huquqli" rejimga o'tkazadi |
+
+## Xavfsizlik qoidalari (kodda majburlangan)
+
+- `ALLOW_SELF_PURCHASE=true` bilan production **ishga tushmaydi**.
+- `PAYMENT_PROVIDER=hamyon` bo'lsa SMS-webhook umuman ulanmaydi (soxta SMS bilan "to'landi" qilib bo'lmaydi). Hamyon callback imzo (`sign`), summa va buyurtma bo'yicha tekshiriladi.
+- `/api/escrow` va `/api/transactions` (kalit bilan refund/release) `ENABLE_INTERNAL_API=true` bo'lmasa ulanmaydi.
+- Barcha so'rovlarda `$`/`.` kalitlari (NoSQL injection) rad etiladi.
+- Autentifikatsiyalangan limitlar foydalanuvchi bo'yicha, kirish limitlari saytdan uzatilgan haqiqiy IP bo'yicha.
+- Telegram webhook `secret_token` (bot tokenidan HMAC) bilan himoyalangan.
+- Barcha admin amallari `isAdminTelegramId` bilan tekshiriladi.
+
+## Deploy tartibi
+
+1. `render.yaml` ni Render Blueprint sifatida import qiling yoki ikkita web service qo'lda yarating (`rootDir: backend` va `rootDir: bot`, build `npm ci --include=dev && npm run build`, start `npm start`).
+2. Sirlarni yuqoridagi jadval bo'yicha kiriting.
+3. Vercel: `BACKEND_URL` va `WEB_PROXY_KEY` ni qo'ying, redeploy.
+4. Hamyon dashboard: `prepare_url=https://<api>/api/payments/hamyon/prepare`, `complete_url=https://<api>/api/payments/hamyon/complete`.
+5. Bot webhook'ni o'zi ro'yxatdan o'tkazadi (`RENDER_EXTERNAL_URL/telegram/webhook`).
+6. Tekshiruv: `GET <api>/health`, `GET <bot>/health`, botga `/start`.
+
+Free planda servislar uxlaydi: Telegram webhook botni uyg'otadi, lekin API'dagi scheduler (to'lov muddati / avto-release) uyqu paytida to'xtaydi — jiddiy ishga tushirishda `starter` planga o'ting.
 
 ## 0. Deploydan OLDIN: sirlarni rotatsiya qiling
 
@@ -72,95 +102,12 @@ Kutilayotgan natija:
 
 Oxirgi qator `⚠ N account(s) still drift` bo'lsa — **deploy qilmang**, avval sababni toping.
 
-## 3. Backend → Render
-
-1. [dashboard.render.com](https://dashboard.render.com) → **New** → **Blueprint**
-2. `dilb3k/Bitmax-backend` repozitoriyasini tanlang
-3. Render `render.yaml` ni topadi va `bitmax-backend` servisini taklif qiladi
-4. `sync: false` belgilangan har bir o'zgaruvchi uchun qiymat so'raydi:
-
-| O'zgaruvchi | Qiymat |
-|---|---|
-| `MONGODB_URI` | Yangi (rotatsiya qilingan) Atlas URI |
-| `BOT_TOKEN` | @BotFather dan yangi token |
-| `ADMIN_CHAT_ID` | `5583276966` |
-| `WEBHOOK_SECRET` | 1-qadamda generatsiya qilingan |
-| `INTERNAL_API_KEY` | 1-qadamda generatsiya qilingan |
-| `ENCRYPTION_KEY` | 1-qadamda generatsiya qilingan (migratsiyada ishlatilgani bilan **bir xil**) |
-| `PAYMENT_CARDS` | `[{"id":"c1","number":"8600...","holder":"ISM F","bank":"Kapitalbank","active":true}]` |
-| `SITE_URL` | Vercel domeni, masalan `https://bitmax.vercel.app` |
-| `CORS_ORIGINS` | Xuddi shu domen |
-| `BOT_USERNAME` | `bitmax_bot` |
-| `SUPPORT_USERNAME` | `bitmax_admin` |
-
-5. **Apply** → Render Docker image'ni build qiladi va ishga tushiradi
-
-Tekshirish:
-
-```bash
-curl https://bitmax-backend.onrender.com/health
-# {"status":"ok","service":"bitmax-api","version":"1.0.0"}
-```
-
-Render logida ko'rinishi kerak:
-
-```
-[DB] MongoDB connected successfully
-[Server] Bitmax API running on port 3001
-[Bot] Bitmax bot started (long polling)
-[Jobs] Scheduler started with 5 jobs
-```
-
-> 💡 **`free` planni tanlamang.** Bepul servis ~15 daqiqa harakatsizlikdan keyin uxlaydi: bot javob bermay qoladi, to'lov oynalari muddati o'tmaydi, escrow o'z vaqtida yopilmaydi.
-
-## 4. Web → Vercel
-
-Web allaqachon Vercel loyihasiga ulangan (`web/.vercel/project.json`).
-
-```bash
-cd web
-npx vercel env add BACKEND_URL production
-#   → https://bitmax-backend.onrender.com
-
-npx vercel --prod
-```
-
-Yoki Vercel dashboard → Settings → Environment Variables:
-
-| O'zgaruvchi | Qiymat |
-|---|---|
-| `BACKEND_URL` | `https://bitmax-backend.onrender.com` |
-| `NEXT_PUBLIC_SITE_URL` | Vercel domeningiz |
-| `NEXT_PUBLIC_BOT_USERNAME` | `bitmax_bot` |
-
-## 5. SMS-Gateway sozlash
-
-Android telefonda SMS-forwarder ilovasini o'rnating (masalan *SMS Forwarder* yoki *SMS Gateway*) va webhook sozlang:
-
-```
-URL:    https://bitmax-backend.onrender.com/api/sms-webhook
-Metod:  POST
-Body:   {"secret":"<WEBHOOK_SECRET>","text":"%message%","sender":"%from%","received_at":"%sentStamp%"}
-```
-
-Tekshirish (haqiqiy pul harakatlanmaydi — mos keladigan buyurtma bo'lmasa `unmatched` bo'ladi):
-
-```bash
-curl -X POST https://bitmax-backend.onrender.com/api/sms-webhook \
-  -H "Content-Type: application/json" \
-  -d '{"secret":"<WEBHOOK_SECRET>","text":"Hisobingizga 1 234 som tushdi","sender":"TEST"}'
-```
-
-Kutilgan javob: `{"success":false,"message":"No matching pending transaction found","reason":"no_match",...}` — va admin Telegram'ga "Egasi topilmagan to'lov" xabari keladi. Bu **to'g'ri** ishlayotganini bildiradi.
-
-Ishlagach `SMS_ALLOWED_SENDERS` ga bankingiz shortcode'ini qo'shing.
-
-## 6. Birinchi bitimni sinash
+## 3. Birinchi bitimni sinash
 
 Deploydan keyin, real pul bilan **eng arzon** test bitimini o'tkazing:
 
 1. Ikkita Telegram akkaunt: biri sotuvchi, biri xaridor
-2. Sotuvchi 1 000 so'mlik e'lon qo'yadi → admin moderatsiyada tasdiqlaydi
+2. Sotuvchi 1 000 so'mlik e'lon qo'yadi (e'lon darhol faol bo'ladi)
 3. Xaridor sotib oladi → **aniq summa** ni o'tkazadi
 4. Bot 1–2 daqiqada "To'lov qabul qilindi" xabarini yuborishi kerak
 5. "🔑 Ma'lumotlarni ochish" → login/parol chiqadi

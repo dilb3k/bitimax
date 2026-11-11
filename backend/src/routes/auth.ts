@@ -8,6 +8,7 @@ import { requireSession, AuthedRequest } from '../middleware/webAuth';
 import { signSession } from '../utils/jwt';
 import { config } from '../config';
 import { randomToken, sha256 } from '../utils/crypto';
+import { clientIp } from '../middleware/webProxy';
 
 const router = Router();
 
@@ -21,8 +22,8 @@ const router = Router();
  */
 
 // Starting a login is cheap for us and expensive to abuse in bulk; poll is the hot path.
-const startLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false });
-const pollLimiter = rateLimit({ windowMs: 5 * 60 * 1000, limit: 250, standardHeaders: true, legacyHeaders: false });
+const startLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false, keyGenerator: clientIp });
+const pollLimiter = rateLimit({ windowMs: 5 * 60 * 1000, limit: 250, standardHeaders: true, legacyHeaders: false, keyGenerator: clientIp });
 
 /** Human-comparable code shown on both screens. Ambiguous glyphs left out, as with deal codes. */
 function generatePairCode(): string {
@@ -43,7 +44,7 @@ router.post('/start', startLimiter, async (req: Request, res: Response) => {
       status: 'pending',
       // Only ever displayed back to the person approving, so they can tell their own device
       // from somebody else's. Truncated because there is no reason to keep more.
-      ip: String(req.ip || '').slice(0, 45),
+      ip: clientIp(req).slice(0, 45),
       userAgent: String(req.header('user-agent') || '').slice(0, 120),
       expiresAt,
     });

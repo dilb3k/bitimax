@@ -1,21 +1,18 @@
 {
-  "name": "bitmax-backend",
-  "version": "1.0.0",
+  "name": "bitimax-backend",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "bot": "tsx watch src/bot/index.ts",
-    "bot:build": "tsc && node dist/bot/index.js",
     "migrate": "tsx src/scripts/migrate.ts",
     "seed": "tsx src/scripts/seed.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "e2e": "tsx src/scripts/e2e.ts",
     "test:hamyon": "node --import tsx src/scripts/hamyon-integration.ts",
-    "test:web": "node --import tsx src/scripts/web-regression.ts",
-    "test:marketplace": "node --import tsx src/scripts/marketplace-regression.ts"
+    "test:web": "node --import tsx src/scripts/web-regression.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -34,5 +31,8 @@
     "@types/node": "^20.11.5",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

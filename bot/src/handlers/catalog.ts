@@ -1,8 +1,8 @@
-import { Product } from '../../models/Product';
-import { botApi } from '../services/api';
-import { config } from '../../config';
-import { escapeHtml, formatUzs } from '../../utils/helpers';
-import { parseListingCode } from '../../utils/listingCode';
+import { Product } from '../core';
+import { marketplace } from '../core';
+import { config } from '../core';
+import { escapeHtml, formatUzs } from '../core';
+import { parseListingCode } from '../core';
 
 export function catalogKeyboard(products: { _id: any; title: string; price: number }[], page: number, pages: number) {
   const rows: any[][] = [[{ text: '🌐 Saytda katalogni ochish', url: `${config.siteUrl.replace(/\/$/, '')}/katalog` }]];
@@ -15,7 +15,7 @@ export function catalogKeyboard(products: { _id: any; title: string; price: numb
 }
 
 export async function sendCatalogPage(ctx: any, requestedPage: number, edit = false) {
-  const { products, total, pages, page } = await botApi.getActiveProducts(requestedPage, 10);
+  const { products, total, pages, page } = await marketplace.getActiveProducts(requestedPage, 10);
   const text = `<b>Akkauntlar katalogi</b>\n${total} ta e’lon · ${page}/${pages}-sahifa\n\n` +
     (total ? 'Nom va narx bo‘yicha tanlang. Batafsil ma’lumot uchun e’lonni bosing.\n\nE’lon ID’sini ham shu chatga yuborishingiz mumkin.' : 'Hozircha sotuvda akkaunt yo‘q. Yangi e’lonlar shu yerda chiqadi.');
   const options = { parse_mode: 'HTML' as const, reply_markup: catalogKeyboard(products, page, pages), link_preview_options: { is_disabled: true } };

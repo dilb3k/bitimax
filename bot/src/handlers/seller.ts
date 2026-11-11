@@ -1,15 +1,15 @@
 import { Composer, Scenes } from 'telegraf';
 import { Types } from 'mongoose';
-import { encryptSecret, decryptSecret } from '../../utils/crypto';
-import { payoutService } from '../../services/payoutService';
-import { Product } from '../../models/Product';
+import { encryptSecret, decryptSecret } from '../core';
+import { payoutService } from '../core';
+import { Product } from '../core';
 import { describeError } from '../utils/errors';
-import { User } from '../../models/User';
-import { botApi } from '../services/api';
-import { notificationService } from '../../services/notificationService';
-import { config } from '../../config';
-import { escapeHtml, formatUzs, formatDealCode, isValidUzCard, maskCard } from '../../utils/helpers';
-import { uploadTelegramPhoto, ImageUploadError } from '../../services/cloudinaryService';
+import { User } from '../core';
+import { marketplace } from '../core';
+import { notificationService } from '../core';
+import { config, CATEGORIES } from '../core';
+import { escapeHtml, formatUzs, formatDealCode, isValidUzCard, maskCard } from '../core';
+import { uploadTelegramPhoto, ImageUploadError } from '../core';
 import { bailIfCancelled } from '../wizards/guard';
 import {
   confirmSellerWarning,
@@ -27,17 +27,6 @@ export const DEAL_WIZARD = 'deal_create';
 
 /** Curated taxonomy. Free-text categories in v1 meant "Instagram", "instagram" and
  * "Инстаграм" were three different catalog buckets nobody could filter on. */
-export const CATEGORIES = [
-  'Telegram',
-  'Instagram',
-  'TikTok',
-  'YouTube',
-  'Steam / Gaming',
-  'Netflix / Streaming',
-  'Email',
-  'Boshqa',
-];
-
 /** Renders the running photo-collection prompt so both wizards show the same wording. */
 function photoStepPrompt(count: number): string {
   return [
@@ -167,7 +156,7 @@ sellerHandler.action(/^deal_cancel_(.+)$/, async (ctx) => {
   const user = await User.findOne({ telegramId: ctx.from!.id });
   if (!user) return void ctx.answerCbQuery('Topilmadi');
 
-  const cancelled = await botApi.cancelDeal(ctx.match[1], String(user._id)).catch(() => null);
+  const cancelled = await marketplace.cancelDeal(ctx.match[1], String(user._id)).catch(() => null);
   if (!cancelled) {
     await ctx.answerCbQuery('Bitim topilmadi yoki allaqachon boshlangan');
     return;
@@ -225,7 +214,7 @@ sellerHandler.action(/^listing_cancel_ask_([a-f0-9]{24})$/, async ctx => {
 });
 sellerHandler.action(/^listing_cancel_do_([a-f0-9]{24})$/, async ctx => {
   const user = await User.findOne({ telegramId: ctx.from.id });
-  const cancelled = user && await botApi.cancelListing(ctx.match[1], String(user._id));
+  const cancelled = user && await marketplace.cancelListing(ctx.match[1], String(user._id));
   if (!cancelled) return void await ctx.answerCbQuery('E’lon topilmadi yoki savdo boshlangan', { show_alert: true });
   await ctx.answerCbQuery('E’lon bekor qilindi');
   await showMyListings(ctx, 1, true);
@@ -235,7 +224,7 @@ sellerHandler.hears(["📊 Statistika","Statistika"], async (ctx) => {
   const user = await User.findOne({ telegramId: ctx.from!.id });
   if (!user || user.role === 'admin') return; // admin has its own stats screen
 
-  const products = await botApi.getUserProducts(user._id.toString());
+  const products = await marketplace.getUserProducts(user._id.toString());
   const activeCount = products.filter((p) => p.status === 'active').length;
   const rating = user.averageRating();
 
@@ -414,7 +403,7 @@ export function createDealWizard() {
       if (!user) return ctx.scene.leave();
 
       const data = ctx.session.dealData;
-      const deal = await botApi.createDeal({ sellerId: String(user._id), ...data });
+      const deal = await marketplace.createDeal({ sellerId: String(user._id), ...data });
 
       // Wipe the plaintext password out of the session the moment it is persisted.
       ctx.session.dealData = {};
@@ -690,7 +679,7 @@ export function createSellerWizard() {
       let product;
       try {
         await payoutService.setPayoutCard(String(user._id), decryptSecret(data.cardEncrypted), data.cardHolder);
-        product = await botApi.createProduct({ sellerId: user._id.toString(), ...data });
+        product = await marketplace.createProduct({ sellerId: user._id.toString(), ...data });
       } catch (error) {
         await ctx.reply(describeError(error) + ' Ma’lumotlar saqlanib turibdi. Tasdiqlashni qayta bosing yoki /cancel yozing.');
         return;

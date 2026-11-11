@@ -9,7 +9,7 @@ import { Payout } from '../models/Payout';
 import { requireSession, AuthedRequest } from '../middleware/webAuth';
 import { validateObjectId } from '../middleware/validateObjectId';
 import { publicUser } from './auth';
-import { botApi } from '../bot/services/api';
+import { marketplace } from '../services/marketplaceService';
 import {
   paymentService,
   AlreadyProcessedError,
@@ -22,7 +22,8 @@ import { ledgerService } from '../services/ledgerService';
 import { describeRefundPolicy } from '../services/refundEngine';
 import { notificationService } from '../services/notificationService';
 import { uploadImageBuffer, ImageUploadError } from '../services/cloudinaryService';
-import { CATEGORIES } from '../bot/handlers/seller';
+import { CATEGORIES } from '../config';
+import { clientIp } from '../middleware/webProxy';
 import { config } from '../config';
 import { escapeHtml, formatUzs, formatDealCode, maskCard } from '../utils/helpers';
 
@@ -39,13 +40,16 @@ const router = Router();
 
 router.use(requireSession);
 
+/** Authenticated limits are per account, not per IP: the site's servers share a few egress IPs. */
+const perUser = (req: Request) => String((req as AuthedRequest).authUser?._id || clientIp(req));
+
 // ── Rate limits ────────────────────────────────────────────────────────────────
 // Tight where an attempt is worth something to an attacker (guessing deal codes, opening
 // credentials), loose where the operation is just reading your own data.
-const writeLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
-const codeLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 10, standardHeaders: true, legacyHeaders: false });
-const revealLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: true, legacyHeaders: false });
-const uploadLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 40, standardHeaders: true, legacyHeaders: false });
+const writeLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: perUser });
+const codeLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: perUser });
+const revealLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: perUser });
+const uploadLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 40, standardHeaders: true, legacyHeaders: false, keyGenerator: perUser });
 
 function actor(req: Request) {
   return (req as AuthedRequest).authUser;
@@ -98,7 +102,7 @@ router.get(['/', '/profile'], async (req: Request, res: Response) => {
       refundTiers: config.refundTiers,
       categories: CATEGORIES,
       maxImages: config.maxProductImages,
-      supportUrl: botApi.supportLink(),
+      supportUrl: marketplace.supportLink(),
     },
   });
 });
@@ -183,7 +187,7 @@ router.post('/deals/lookup', codeLimiter, async (req: Request, res: Response) =>
     const { code } = parse(codeSchema, req.body);
     const user = actor(req);
 
-    const deal = await botApi.findDealByCode(code);
+    const deal = await marketplace.findDealByCode(code);
     if (!deal) return res.status(404).json({ error: 'Bunday kod topilmadi yoki bitim yopilgan' });
 
     const isOwnDeal = String((deal.sellerId as any)?._id || deal.sellerId) === String(user._id);
@@ -506,7 +510,7 @@ router.post('/orders/:id/refund', writeLimiter, validateObjectId(), async (req: 
           `Sabab: ${reason}`,
           `Sizga kompensatsiya: <b>${formatUzs(result.sellerKeeps ?? 0)}</b>`,
           '',
-          `<i>Dalil bilan nizo ochish: ${botApi.supportLink()}</i>`,
+          `<i>Dalil bilan nizo ochish: ${marketplace.supportLink()}</i>`,
         ].join('\n')
       );
     }
@@ -558,7 +562,7 @@ router.post('/orders/:id/rate', writeLimiter, validateObjectId(), async (req: Re
 router.get('/listings', async (req: Request, res: Response) => {
   try {
     const user = actor(req);
-    const products = await botApi.getUserProducts(String(user._id));
+    const products = await marketplace.getUserProducts(String(user._id));
 
     res.json({
       listings: products.map((p: any) => ({
@@ -633,7 +637,7 @@ router.post('/listings', writeLimiter, async (req: Request, res: Response) => {
       await user.save();
     }
 
-    const product = await botApi.createProduct({
+    const product = await marketplace.createProduct({
       sellerId: String(user._id),
       title: data.title,
       description: data.description,
@@ -676,7 +680,7 @@ router.post('/deals', writeLimiter, async (req: Request, res: Response) => {
       await user.save();
     }
 
-    const deal = await botApi.createDeal({
+    const deal = await marketplace.createDeal({
       sellerId: String(user._id),
       title: data.title,
       price: data.price,
@@ -709,7 +713,7 @@ router.post('/listings/:id/cancel', writeLimiter, validateObjectId(), async (req
   try {
     const user = actor(req);
     // Scoped by sellerId inside cancelDeal, so an id belonging to somebody else matches nothing.
-    const cancelled = await botApi.cancelListing(req.params.id, String(user._id));
+    const cancelled = await marketplace.cancelListing(req.params.id, String(user._id));
     if (!cancelled) return res.status(409).json({ error: 'E’lon topilmadi, band qilingan yoki savdo boshlangan' });
     res.json({ ok: true });
   } catch (error: any) {

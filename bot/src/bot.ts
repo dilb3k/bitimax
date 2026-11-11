@@ -1,32 +1,18 @@
-import crypto from 'crypto';
-import type { RequestHandler } from 'express';
 import { Telegraf, Scenes, session } from 'telegraf';
-import { config } from '../config';
-import { connectDatabase } from '../db/mongoose';
-import { mongoSessionStore } from '../models/BotSession';
-import { User } from '../models/User';
-import { notificationService } from '../services/notificationService';
+import { config, CATEGORIES } from './core';
+import { mongoSessionStore } from './core';
+import { User } from './core';
+import { notificationService } from './core';
 import { startHandler, createPayoutWizards, keyboardFor } from './handlers/start';
-import { sellerHandler, createSellerWizard, createDealWizard, CATEGORIES } from './handlers/seller';
+import { sellerHandler, createSellerWizard, createDealWizard } from './handlers/seller';
 import { buyerHandler, createCodeWizard } from './handlers/buyer';
 import { adminHandler, createRoleWizard } from './handlers/admin';
-import { botApi } from './services/api';
+import { marketplace } from './core';
 import { listingLookup } from './handlers/catalog';
-import { escapeHtml, formatUzs } from '../utils/helpers';
+import { escapeHtml, formatUzs } from './core';
 
-/**
- * Starts the Telegraf bot (long-polling). Assumes the caller has already connected to
- * the database — this lets it run either standalone (see the bottom of this file) or
- * embedded in the same process as the HTTP API (see src/index.ts), sharing one Mongo
- * connection instead of opening two.
- */
-let webhookHandler: RequestHandler | undefined;
-export const telegramWebhook: RequestHandler = (req, res, next) => {
-  if (!webhookHandler) { res.status(503).json({ error: 'Bot starting' }); return; }
-  return webhookHandler(req, res, next);
-};
-
-export async function startBot(): Promise<void> {
+/** Builds the fully wired Telegraf instance. Launching (webhook vs polling) is index.ts's job. */
+export async function createBot(): Promise<Telegraf<any> | null> {
   if (!config.botToken || config.botToken === 'YOUR_BOT_TOKEN_HERE') {
     // In production the bot *is* the product: refuse to boot half a platform. Locally, a
     // missing token is the normal case while working on the website, so the API and the
@@ -38,11 +24,11 @@ export async function startBot(): Promise<void> {
       '[Bot] BOT_TOKEN not set — bot disabled. The API and the scheduler keep running; ' +
         'Telegram notifications are skipped.'
     );
-    return;
+    return null;
   }
 
   const bot = new Telegraf<any>(config.botToken);
-  notificationService.setBot(bot);
+  notificationService.setTelegram(bot.telegram);
 
   const stage = new Scenes.Stage<any>([
     createSellerWizard(),
@@ -68,9 +54,9 @@ export async function startBot(): Promise<void> {
     if (!ctx.from) return next();
 
     try {
-      const user = await botApi.getOrCreateUser(ctx.from.id, ctx);
+      const user = await marketplace.getOrCreateUser(ctx.from.id, ctx);
       if (user.isBlocked) {
-        const notice = `❌ Hisobingiz bloklangan.\n${user.blockReason || ''}\n\n${botApi.supportLink()}`;
+        const notice = `❌ Hisobingiz bloklangan.\n${user.blockReason || ''}\n\n${marketplace.supportLink()}`;
         if (ctx.callbackQuery) await ctx.answerCbQuery('Hisobingiz bloklangan');
         else await ctx.reply(notice);
         return;
@@ -125,7 +111,7 @@ export async function startBot(): Promise<void> {
 
   bot.action(/^cat_(.+)$/, async (ctx) => {
     const category = ctx.match[1];
-    const { products, total } = await botApi.getActiveProducts(1, 10, category);
+    const { products, total } = await marketplace.getActiveProducts(1, 10, category);
 
     if (products.length === 0) {
       await ctx.editMessageText(`📂 <b>${escapeHtml(category)}</b> — mahsulot topilmadi`, {
@@ -160,29 +146,12 @@ export async function startBot(): Promise<void> {
     console.error(`[Bot] Error handling ${ctx?.updateType}:`, err);
   });
 
-  if (config.botWebhookUrl) {
-    const secret = crypto.createHmac('sha256', config.internalApiKey).update('telegram-webhook-v1').digest('hex');
-    bot.botInfo = await bot.telegram.getMe();
-    webhookHandler = bot.webhookCallback('/api/telegram/webhook', { secretToken: secret });
-    await bot.telegram.setWebhook(config.botWebhookUrl, { secret_token: secret, max_connections: 1 });
-    console.log('[Bot] Telegram webhook ready');
-    return;
-  }
+  return bot;
+}
 
-  // In long-polling mode bot.launch() only resolves once the bot is stopped (its internal
-  // loop runs until then), so awaiting it here would hang startBot() forever and, when
-  // embedded in the HTTP server process, block start() from ever finishing. It is launched
-  // in the background and supervised instead.
-  launchWithRetry(bot);
-
-  process.once('SIGINT', () => {
-    stopping = true;
-    bot.stop('SIGINT');
-  });
-  process.once('SIGTERM', () => {
-    stopping = true;
-    bot.stop('SIGTERM');
-  });
+/** Signals the polling supervisor that shutdown is intentional. */
+export function markStopping() {
+  stopping = true;
 }
 
 let stopping = false;
@@ -199,7 +168,7 @@ let stopping = false;
  * Retrying with backoff rides out the overlap: the loser waits, the old instance finishes
  * shutting down, and the next attempt succeeds.
  */
-async function launchWithRetry(bot: Telegraf<any>): Promise<void> {
+export async function launchWithRetry(bot: Telegraf<any>): Promise<void> {
   const MAX_ATTEMPTS = 20;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS && !stopping; attempt++) {
@@ -240,16 +209,4 @@ async function launchWithRetry(bot: Telegraf<any>): Promise<void> {
   if (!stopping) {
     console.error('[Bot] Could not start polling after all retries — bot is NOT running');
   }
-}
-
-// Allows `npm run bot` to still run the bot as its own standalone process (e.g. if this
-// ever gets split back out to a separate worker). When imported by src/index.ts instead,
-// none of this runs — the importer calls startBot() itself after connecting the DB.
-if (require.main === module) {
-  connectDatabase()
-    .then(startBot)
-    .catch((err) => {
-      console.error('[Bot] Fatal startup error:', err);
-      process.exit(1);
-    });
 }

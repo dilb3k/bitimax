@@ -1,15 +1,15 @@
 import { Composer, Scenes } from 'telegraf';
 import { sendProductDetail } from './catalog';
-import { User } from '../../models/User';
-import { LoginRequest } from '../../models/LoginRequest';
-import { audit } from '../../models/AuditLog';
-import { sha256 } from '../../utils/crypto';
-import { botApi } from '../services/api';
-import { payoutService, InsufficientBalanceError } from '../../services/payoutService';
-import { ledgerService } from '../../services/ledgerService';
-import { describeRefundPolicy } from '../../services/refundEngine';
-import { config } from '../../config';
-import { escapeHtml, formatUzs } from '../../utils/helpers';
+import { User } from '../core';
+import { LoginRequest } from '../core';
+import { audit } from '../core';
+import { sha256 } from '../core';
+import { marketplace } from '../core';
+import { payoutService, InsufficientBalanceError } from '../core';
+import { ledgerService } from '../core';
+import { describeRefundPolicy } from '../core';
+import { config } from '../core';
+import { escapeHtml, formatUzs } from '../core';
 import { bailIfCancelled } from '../wizards/guard';
 import {
   mainMenu,
@@ -30,7 +30,7 @@ export function keyboardFor(role: string) {
 }
 
 startHandler.start(async (ctx) => {
-  const user = await botApi.getOrCreateUser(ctx.from!.id, ctx);
+  const user = await marketplace.getOrCreateUser(ctx.from!.id, ctx);
 
   if (user.isBlocked) {
     await ctx.reply(`❌ Hisobingiz bloklangan.\n${user.blockReason || ''}`);
@@ -87,7 +87,7 @@ function helpText(): string {
     '',
     `Komissiya: ${config.platformCommission}%. Minimal pul yechish: ${formatUzs(config.minPayoutAmount)}.`,
     `Formadan chiqish: /cancel. ID orqali qidirish: /id 123456. Botni tekshirish: /healt.`,
-    `Yordam: ${botApi.supportLink()}`,
+    `Yordam: ${marketplace.supportLink()}`,
   ].join('\n');
 }
 

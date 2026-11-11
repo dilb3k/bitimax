@@ -21,6 +21,20 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
 
 const isProd = process.env.NODE_ENV === 'production';
 
+/**
+ * Proves to the API that the call comes from this site's server, and tells it which visitor
+ * is behind it (for rate limits and the "who is logging in" alert in the bot). The key is the
+ * shared WEB_PROXY_KEY secret; it never reaches the browser.
+ */
+function backendIdentity(): Record<string, string> {
+  const out: Record<string, string> = {};
+  const key = process.env.WEB_PROXY_KEY;
+  if (key) out['x-web-key'] = key;
+  const forwarded = headers().get('x-forwarded-for')?.split(',')[0]?.trim() || headers().get('x-real-ip') || '';
+  if (forwarded) out['x-client-ip'] = forwarded;
+  return out;
+}
+
 export function sessionCookieOptions(maxAgeSeconds: number) {
   return {
     httpOnly: true,
@@ -67,6 +81,7 @@ export async function backendFetch(path: string, init: RequestInit = {}): Promis
 
   const requestHeaders = new Headers(init.headers);
   requestHeaders.set('Authorization', `Bearer ${token}`);
+  for (const [name, value] of Object.entries(backendIdentity())) requestHeaders.set(name, value);
 
   return fetch(`${BACKEND_URL}${path}`, {
     ...init,
@@ -78,7 +93,9 @@ export async function backendFetch(path: string, init: RequestInit = {}): Promis
 
 /** Unauthenticated backend call (login pairing endpoints). */
 export function publicBackendFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  return fetch(`${BACKEND_URL}${path}`, { ...init, cache: 'no-store', signal: init.signal || AbortSignal.timeout(25000) });
+  const requestHeaders = new Headers(init.headers);
+  for (const [name, value] of Object.entries(backendIdentity())) requestHeaders.set(name, value);
+  return fetch(`${BACKEND_URL}${path}`, { ...init, headers: requestHeaders, cache: 'no-store', signal: init.signal || AbortSignal.timeout(25000) });
 }
 
 export function clearSession(response: NextResponse) {

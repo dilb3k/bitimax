@@ -1,7 +1,6 @@
 import { config } from '../config';
 import { RefundQuote } from '../types';
 import { escapeHtml, formatUzs, formatDeadline } from '../utils/helpers';
-import { adminRefundButtons } from '../bot/keyboards';
 
 /** Inline support mention reused by the messages below — keeps the phrasing consistent. */
 function botSupportLine(): string {
@@ -20,21 +19,22 @@ interface NotifyPayload {
 }
 
 class NotificationService {
-  private bot: any = null;
+  private telegram: { sendMessage: (chatId: string, text: string, extra?: any) => Promise<unknown> } | null = null;
 
-  setBot(botInstance: any) {
-    this.bot = botInstance;
+  /** Accepts any Telegram API client (Telegraf's `Telegram`) — delivery only, no polling. */
+  setTelegram(client: { sendMessage: (chatId: string, text: string, extra?: any) => Promise<unknown> }) {
+    this.telegram = client;
   }
 
   async send(payload: NotifyPayload): Promise<boolean> {
-    if (!this.bot) {
+    if (!this.telegram) {
       console.warn('[Notify] Bot not initialized, message skipped:', payload.message.slice(0, 60));
       return false;
     }
     if (!payload.chatId) return false;
 
     try {
-      await this.bot.telegram.sendMessage(String(payload.chatId), payload.message, {
+      await this.telegram.sendMessage(String(payload.chatId), payload.message, {
         parse_mode: 'HTML',
         disable_notification: payload.silent,
         ...(payload.buttons?.length ? { reply_markup: { inline_keyboard: payload.buttons } } : {}),
@@ -214,7 +214,11 @@ class NotificationService {
 
     return this.notifyAdmin(
       message,
-      adminRefundButtons(input.escrowId, input.sellerId, input.productId).reply_markup.inline_keyboard
+      [
+        [{ text: 'E’lonni o‘chirish', callback_data: `adm_delprod_${input.productId}` }],
+        [{ text: 'Sotuvchini bloklash', callback_data: `adm_ban_${input.sellerId}` }],
+        [{ text: 'Batafsil', callback_data: `adm_details_${input.escrowId}` }],
+      ]
     );
   }
 }

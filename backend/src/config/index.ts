@@ -5,6 +5,19 @@ dotenv.config();
 
 const isProd = process.env.NODE_ENV === 'production';
 
+/**
+ * Which deployable is loading this module. The bot service shares the domain code with the
+ * API but must NOT hold the API's web-only secrets (session signing, SMS webhook, internal
+ * key): a compromised bot process then cannot forge website logins or fake a bank SMS.
+ */
+const serviceRole: 'backend' | 'bot' = process.env.SERVICE_ROLE === 'bot' ? 'bot' : 'backend';
+
+/** Secrets only the API needs. In the bot they are replaced by an unguessable per-process value. */
+function apiOnlySecret(name: string, devFallback: string): string {
+  if (serviceRole === 'bot') return crypto.randomBytes(32).toString('hex');
+  return required(name, devFallback);
+}
+
 function required(name: string, devFallback: string): string {
   const value = process.env[name];
   if (value && value.trim().length > 0) return value;
@@ -83,23 +96,36 @@ function parsePaymentCards(): PaymentCard[] {
   }
 }
 
+/** Listing categories offered on both the website and the bot. */
+export const CATEGORIES = [
+  'Telegram',
+  'Instagram',
+  'TikTok',
+  'YouTube',
+  'Steam / Gaming',
+  'Netflix / Streaming',
+  'Email',
+  'Boshqa',
+];
+
 export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
+  serviceRole,
   isProd,
   mongodbUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/bitmax',
   port: parseInt(process.env.PORT || '3001', 10),
   botToken: process.env.BOT_TOKEN || '',
-  botWebhookUrl: process.env.BOT_WEBHOOK_URL || (process.env.RENDER_EXTERNAL_URL ? `${process.env.RENDER_EXTERNAL_URL}/api/telegram/webhook` : ''),
+  botWebhookUrl: process.env.BOT_WEBHOOK_URL || (process.env.RENDER_EXTERNAL_URL ? `${process.env.RENDER_EXTERNAL_URL}/telegram/webhook` : ''),
   adminChatId: process.env.ADMIN_CHAT_ID || '',
   // Extra admins beyond the owner — comma separated telegram ids.
   extraAdminIds: (process.env.ADMIN_IDS || '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
-  webhookSecret: required('WEBHOOK_SECRET', 'dev_only_webhook_secret_change_me'),
+  webhookSecret: apiOnlySecret('WEBHOOK_SECRET', 'dev_only_webhook_secret_change_me'),
   // Shared secret required on every internal (non-public) backend route, e.g. escrow/transactions
   // management. Only the bot process and trusted internal tools should ever hold this value.
-  internalApiKey: required('INTERNAL_API_KEY', 'dev_only_internal_key_change_me'),
+  internalApiKey: apiOnlySecret('INTERNAL_API_KEY', 'dev_only_internal_key_change_me'),
   // 32-byte key (64 hex chars) used to envelope-encrypt account credentials at rest.
   // Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
   encryptionKey: required(
@@ -107,10 +133,18 @@ export const config = {
     '0'.repeat(64) // dev-only: predictable, never use outside local development
   ),
 
+  // Shared secret between the Next.js site and this API. When set, /api/me and /api/auth refuse
+  // every caller that cannot present it (the site's server is the only legitimate client), and
+  // the real visitor IP the site forwards is trusted for rate limiting and login alerts.
+  webProxyKey: process.env.WEB_PROXY_KEY || '',
+  // The escrow/transactions management API is operator tooling, not part of any shipped client.
+  // Off unless explicitly enabled, so a leaked INTERNAL_API_KEY alone opens nothing.
+  enableInternalApi: process.env.ENABLE_INTERNAL_API === 'true',
+
   // Signs the web session token (see utils/jwt.ts). Separate from every other secret on
   // purpose: leaking it forges logins but decrypts nothing, and rotating it just logs
   // everybody out instead of destroying stored credentials.
-  sessionSecret: required('SESSION_SECRET', 'dev_only_session_secret_change_me'),
+  sessionSecret: apiOnlySecret('SESSION_SECRET', 'dev_only_session_secret_change_me'),
   // How long a browser session stays valid before the user has to re-approve in the bot.
   webSessionDays: num('WEB_SESSION_DAYS', 7),
   // How long an unapproved web login request stays claimable.
@@ -189,6 +223,13 @@ export const config = {
    */
   allowSelfPurchase: process.env.ALLOW_SELF_PURCHASE === 'true',
 };
+
+if (config.isProd && config.serviceRole === 'backend' && !config.webProxyKey) {
+  console.warn('[Config] WEB_PROXY_KEY is not set — /api/me and /api/auth accept any caller. Set it on the API and the site.');
+}
+if (config.isProd && config.allowSelfPurchase) {
+  throw new Error('[Config] ALLOW_SELF_PURCHASE must be false in production');
+}
 
 if (config.allowSelfPurchase) {
   console.warn(

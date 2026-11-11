@@ -28,7 +28,7 @@ router.get('/', async (req: Request, res: Response) => {
     // Private deals are reachable only by their code and must never appear in the catalog,
     // so listingType leads every public query rather than being an afterthought filter.
     const filter: any = { status: 'active', listingType: 'public' };
-    if (category) filter.category = category;
+    if (typeof category === 'string' && category) filter.category = category.slice(0, 60);
 
     if (minPrice || maxPrice) {
       filter.price = {};
