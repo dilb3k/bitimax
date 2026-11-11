@@ -249,7 +249,7 @@ async function showListingCard(ctx: any, productId: string, ownerTelegramId: num
   await ctx.answerCbQuery().catch(() => undefined);
 
   const isPrivate = p.listingType === 'private';
-  const lapsed = isPrivate && p.status === 'archived' && p.archiveReason === 'expired' && Boolean(p.dealCode);
+  const lapsed = isPrivate && p.status === 'archived' && p.archiveReason === 'expired' && Boolean(p.dealCode) && !p.credentialsPurgedAt;
   const rows: any[][] = [];
   if (EDITABLE_STATUSES.includes(p.status)) {
     rows.push([{ text: '✏️ Tahrirlash', callback_data: `listing_edit_${p._id}` }]);

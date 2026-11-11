@@ -64,7 +64,17 @@ export function createCodeWizard() {
 
       const deal = await marketplace.findDealByCode(raw);
 
+      if (deal && (deal as any).status === 'reserved') {
+        await ctx.reply('⏳ Bu bitim hozir to‘lov jarayonida. Bir necha daqiqadan so‘ng qayta urinib ko‘ring.', mainMenuKeyboard);
+        return ctx.scene.leave();
+      }
+
       if (!deal) {
+        const why = await marketplace.diagnoseDealCode(raw);
+        if (why === 'expired') {
+          await ctx.reply('⌛ Bu bitimning muddati tugagan. Sotuvchidan uni “Qayta ochish” qilishini so‘rang.', mainMenuKeyboard);
+          return ctx.scene.leave();
+        }
         ctx.session.codeTries = (ctx.session.codeTries || 0) + 1;
         if (ctx.session.codeTries >= 3) {
           await ctx.replyWithHTML(

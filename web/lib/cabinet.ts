@@ -251,6 +251,7 @@ export const api = {
       basePrice?: number;
       productId?: string;
       paymentReview?: boolean;
+      listingType?: 'public' | 'private';
       status: 'pending_payment' | 'paid' | 'expired' | 'cancelled' | 'refunded' | 'completed';
       title: string;
       uniqueAmount: number;

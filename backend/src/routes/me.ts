@@ -195,7 +195,14 @@ router.post('/deals/lookup', codeLimiter, async (req: Request, res: Response) =>
     const user = actor(req);
 
     const deal = await marketplace.findDealByCode(code);
-    if (!deal) return res.status(404).json({ error: 'Bunday kod topilmadi yoki bitim yopilgan' });
+    if (!deal) {
+      const why = await marketplace.diagnoseDealCode(code);
+      if (why === 'expired') return res.status(410).json({ error: 'Bu bitimning muddati tugagan. Sotuvchidan uni qayta ochishni so‘rang' });
+      return res.status(404).json({ error: 'Bunday kod topilmadi yoki bitim yopilgan' });
+    }
+    if (deal.status === 'reserved') {
+      return res.status(409).json({ error: 'Bu bitim hozir to‘lov jarayonida. Bir necha daqiqadan so‘ng qayta urinib ko‘ring' });
+    }
 
     const isOwnDeal = String((deal.sellerId as any)?._id || deal.sellerId) === String(user._id);
     if (isOwnDeal && !config.allowSelfPurchase) {
@@ -311,7 +318,7 @@ router.get('/transactions/:id/status', validateObjectId(), async (req: Request, 
     const user = actor(req);
     const transaction = await Transaction.findOne({ _id: req.params.id, buyerId: user._id }).populate(
       'productId',
-      'title'
+      'title listingType'
     );
     if (!transaction) return res.status(404).json({ error: 'Buyurtma topilmadi' });
 
@@ -340,6 +347,8 @@ router.get('/transactions/:id/status', validateObjectId(), async (req: Request, 
       productId: String(transaction.productId && (transaction.productId as any)._id || transaction.productId),
       cancelReason: transaction.status === 'expired' || transaction.status === 'cancelled' ? transaction.cancelReason || null : null,
       paymentReview: Boolean(transaction.paymentReview),
+      // Private deals are re-opened through the code screen, not the public buy page.
+      listingType: (transaction.productId as any)?.listingType || 'public',
       title: (transaction.productId as any)?.title || 'Mahsulot',
       uniqueAmount: transaction.uniqueAmount,
       expireAt: transaction.expireAt,
@@ -580,7 +589,7 @@ router.get('/listings', async (req: Request, res: Response) => {
         dealCode:
           p.listingType === 'private' && p.dealCode && ['active', 'reserved'].includes(p.status)
             ? formatDealCode(p.dealCode)
-            : p.listingType === 'private' && p.dealCode && p.status === 'archived' && p.archiveReason === 'expired'
+            : p.listingType === 'private' && p.dealCode && p.status === 'archived' && p.archiveReason === 'expired' && !p.credentialsPurgedAt
               ? formatDealCode(p.dealCode)
               : null,
         dealExpiresAt: p.dealExpiresAt || null,

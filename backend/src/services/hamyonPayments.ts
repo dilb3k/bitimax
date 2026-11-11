@@ -131,6 +131,18 @@ export async function processHamyonCallback(kind: 'prepare' | 'complete', raw: u
 async function flagForReview(tx: ITransaction, reason: string, extra: Record<string, unknown> = {}) {
   const res = await Transaction.updateOne({ _id: tx._id, paymentReview: { $exists: false } }, { $set: { paymentReview: reason, ...extra } });
   if (res.modifiedCount) {
+    // The buyer paid real money and would otherwise see nothing but an "expired" order.
+    const buyer = await User.findById(tx.buyerId).select('telegramId');
+    if (buyer?.telegramId) {
+      await notificationService.send({
+        type: 'buyer',
+        chatId: buyer.telegramId,
+        message:
+          `💳 <b>To‘lovingiz qabul qilindi</b>\n\nBuyurtma muddati o‘tib ketgan bo‘lsa ham pulingiz yo‘qolmaydi: ` +
+          `administrator uni qo‘lda tekshiradi va buyurtmani tiklaydi yoki pulni qaytaradi. Qayta to‘lamang.\n` +
+          `Buyurtma: <code>${tx._id}</code>`,
+      }).catch(() => undefined);
+    }
     const sent = await notificationService.notifyAdmin(`⚠️ HamyonAPI: ${reason}. Buyurtma: ${tx._id}, summa: ${tx.hamyonAmount}. Qo‘lda tekshiring.`);
     if (sent) await Transaction.updateOne({ _id: tx._id }, { $set: { paymentReviewNotifiedAt: new Date() } });
   }
@@ -175,10 +187,10 @@ async function applyCancel(tx: ITransaction, reason?: string): Promise<CallbackR
   const expired = await Transaction.findOneAndUpdate({ _id: tx._id, status: 'pending_payment' },
     { $set: { status: 'expired', cancelReason: 'hamyon_cancel', ...(reason ? { hamyonCancelReason: reason } : {}) } });
   if (!expired) return ok('duplicate');
-  await paymentService.releaseReservation(String(tx.productId));
-  await paymentService.notifySellerDealReopened(String(tx.productId)).catch(() => undefined);
-  const [buyer, product] = await Promise.all([User.findById(tx.buyerId).select('telegramId'), Product.findById(tx.productId).select('title')]);
-  if (buyer?.telegramId && product) await notificationService.notifyPaymentWindowExpired(buyer.telegramId, product.title || 'Mahsulot', String(product._id));
+  const released = await paymentService.releaseReservation(String(tx.productId), undefined, String(tx.buyerId));
+  if (released) await paymentService.notifySellerDealReopened(String(tx.productId)).catch(() => undefined);
+  const [buyer, product] = await Promise.all([User.findById(tx.buyerId).select('telegramId'), Product.findById(tx.productId).select('title listingType dealCode')]);
+  if (buyer?.telegramId && product) await notificationService.notifyPaymentWindowExpired(buyer.telegramId, product.title || 'Mahsulot', String(product._id), product.listingType === 'private' ? product.dealCode : undefined);
   return ok();
 }
 
@@ -191,6 +203,8 @@ export async function notifyHamyonPaid(transactionId: unknown) {
   if (buyer?.telegramId && hold) {
     const sent = await notificationService.notifyPaymentConfirmed(buyer.telegramId, product?.title || 'Mahsulot', t.basePrice, String(hold._id), hold.autoReleaseAt);
     if (sent) await Transaction.updateOne({ _id: t._id }, { $set: { paymentNotifiedAt: new Date() } });
+    // The seller learns of the sale the moment it is paid, not at reveal or release time.
+    await paymentService.notifySellerPaid(String(hold._id)).catch(() => undefined);
   }
 }
 

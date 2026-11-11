@@ -142,6 +142,7 @@ export class PaymentService {
       ).catch(() => false);
       if (sent) await Transaction.updateOne({ _id: transaction._id }, { $set: { paymentNotifiedAt: new Date() } });
     }
+    if (hold) await this.notifySellerPaid(String(hold._id)).catch(() => undefined);
 
     return {
       transaction,
@@ -347,13 +348,15 @@ export class PaymentService {
   }
 
   /** Returns a reserved-but-unpaid product to the catalog. */
-  async releaseReservation(productId: string, session?: mongoose.ClientSession) {
+  async releaseReservation(productId: string, session?: mongoose.ClientSession, buyerId?: string) {
     // A private deal whose buyer was late must stay open for a while: if its original deadline
     // passed during the payment window the sweeper would archive it minutes after it came back,
     // and the seller would lose the deal (and its code) over the buyer's delay.
     const keepOpenUntil = new Date(Date.now() + 24 * 3600_000);
     return Product.findOneAndUpdate(
-      { _id: productId, status: 'reserved' },
+      // With a buyerId only that buyer's own reservation is freed: a stale expiry job must not
+      // release a newer buyer who has since reserved the same product.
+      { _id: productId, status: 'reserved', ...(buyerId ? { reservedBy: new mongoose.Types.ObjectId(buyerId) } : {}) },
       [
         {
           $set: {
@@ -380,6 +383,23 @@ export class PaymentService {
       seller.telegramId,
       `🛒 <b>Xaridor to‘lovni boshladi</b>\n\n<b>${escapeHtml(product.title)}</b>\n` +
         `To‘lash muddati: ${formatDeadline(until)} gacha. Shu vaqtgacha bitim band.`
+    );
+  }
+
+  /** Tells the seller their account is now paid and held in escrow (the sale itself, not just a reservation). */
+  async notifySellerPaid(escrowHoldId: string) {
+    const hold = await EscrowHold.findById(escrowHoldId);
+    if (!hold) return;
+    const [seller, product] = await Promise.all([
+      User.findById(hold.sellerId).select('telegramId'),
+      Product.findById(hold.productId).select('title'),
+    ]);
+    if (!seller?.telegramId) return;
+    await notificationService.notifySeller(
+      seller.telegramId,
+      `💰 <b>Xaridor to‘ladi</b>\n\n<b>${escapeHtml(product?.title || 'Mahsulot')}</b>\n` +
+        `Pul kafilda saqlanmoqda. Xaridor akkauntni tekshirib tasdiqlagach sizga o‘tkaziladi ` +
+        `(sizga ${hold.sellerPayout.toLocaleString('en-US').replace(/,/g, ' ')} UZS).`
     );
   }
 

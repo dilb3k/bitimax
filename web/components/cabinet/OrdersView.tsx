@@ -112,6 +112,11 @@ export function OrdersView() {
                       {item.paymentReview ? "Tekshirish" : "To‘lash"}
                     </Link>
                   </div>
+                ) : item.paymentReview ? (
+                  // Money arrived after the window: say so instead of a bare "expired".
+                  <Link href={`/tolov/${item.id}`} className="inline-flex">
+                    <Badge tone="accent">Pul tushgan, tekshirilmoqda</Badge>
+                  </Link>
                 ) : (
                   <Badge tone="muted">Muddati o‘tgan</Badge>
                 )}

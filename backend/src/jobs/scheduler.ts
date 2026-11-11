@@ -38,7 +38,7 @@ export async function expirePendingTransactions(): Promise<number> {
     .limit(500)
     .select('_id productId buyerId')
     .populate('buyerId', 'telegramId')
-    .populate('productId', 'title');
+    .populate('productId', 'title listingType dealCode');
 
   let expired = 0;
   for (const transaction of stale) {
@@ -54,10 +54,11 @@ export async function expirePendingTransactions(): Promise<number> {
     const buyer = transaction.buyerId as any;
     const product = transaction.productId as any;
 
-    await paymentService.releaseReservation(String(product?._id || transaction.productId));
+    const productId = String(product?._id || transaction.productId);
+    const released = await paymentService.releaseReservation(productId, undefined, String(buyer?._id || transaction.buyerId));
     expired += 1;
     // A private deal's seller is waiting on this buyer: say that the code is live again.
-    await paymentService.notifySellerDealReopened(String(product?._id || transaction.productId)).catch(() => undefined);
+    if (released) await paymentService.notifySellerDealReopened(productId).catch(() => undefined);
 
     // Previously silent — a buyer who missed the window had no way to learn the reservation
     // lapsed short of reopening the listing and noticing it was gone.
@@ -65,7 +66,8 @@ export async function expirePendingTransactions(): Promise<number> {
       await notificationService.notifyPaymentWindowExpired(
         buyer.telegramId,
         product.title || 'Mahsulot',
-        String(product._id)
+        String(product._id),
+        product.listingType === 'private' ? product.dealCode : undefined
       );
     }
    } catch (err) {
@@ -145,11 +147,22 @@ export async function settleDueEscrows(): Promise<{ released: number; refunded: 
           undefined,
           { onlyIfUnrevealed: true }
         );
-        await Product.findByIdAndUpdate(hold.productId, {
+        const relisted = await Product.findByIdAndUpdate(hold.productId, {
           $set: { status: 'active' },
           $unset: { buyerId: '', soldAt: '' },
-        });
+        }, { new: true });
+        if (relisted?.listingType === 'private') {
+          // Same rule as a lapsed payment: do not let the deal's old deadline kill it right away.
+          const keepOpenUntil = new Date(Date.now() + 24 * 3600_000);
+          await Product.updateOne({ _id: relisted._id, dealExpiresAt: { $lt: keepOpenUntil } }, { $set: { dealExpiresAt: keepOpenUntil } });
+        }
         refunded += 1;
+        await notificationService.notifySeller(
+          seller?.telegramId,
+          `🔄 <b>Xaridor ma’lumotlarni ochmadi</b>\n\n<b>${escapeHtml(product?.title || '—')}</b>\n` +
+            `${config.unrevealedGraceHours} soat ichida ochilmagani uchun pul xaridorga qaytarildi, ` +
+            `e’lon yana sotuvda${relisted?.listingType === 'private' ? ' (bitim kodi ishlaydi)' : ''}.`
+        );
 
         await notificationService.notifyBuyer(
           buyer?.telegramId,

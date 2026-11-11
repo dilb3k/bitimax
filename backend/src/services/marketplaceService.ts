@@ -168,6 +168,20 @@ export class MarketplaceService {
     }).populate('sellerId', 'telegramId username trustLevel sellerStats');
   }
 
+  /**
+   * Why a code that does not resolve is unusable right now, so the buyer is told something
+   * actionable instead of the same "not found" for every case.
+   */
+  async diagnoseDealCode(code: string): Promise<'reserved' | 'expired' | null> {
+    const normalized = normalizeDealCode(code);
+    if (normalized.length !== 8) return null;
+    const deal = await Product.findOne({ dealCode: normalized, listingType: 'private' }).select('status archiveReason');
+    if (!deal) return null;
+    if (deal.status === 'reserved') return 'reserved';
+    if (deal.status === 'archived' && deal.archiveReason === 'expired') return 'expired';
+    return null;
+  }
+
   /** Seller cancels their own unclaimed deal, invalidating the code. */
   async cancelDeal(productId: string, sellerId: string) {
     return this.cancelListing(productId, sellerId);
@@ -275,6 +289,8 @@ export class MarketplaceService {
         status: 'archived',
         archiveReason: 'expired',
         dealCode: { $exists: true },
+        // Credentials wiped by the retention job cannot be sold again.
+        credentialsPurgedAt: { $exists: false },
       },
       { $set: { status: 'active', dealExpiresAt: new Date(Date.now() + 7 * 24 * 3600_000) }, $unset: { archiveReason: '' } },
       { new: true }
@@ -292,7 +308,7 @@ export class MarketplaceService {
       throw Object.assign(new Error('Katalogga chiqarish uchun avval tavsifni to‘ldiring (kamida 20 belgi)'), { status: 400 });
     }
     return Product.findOneAndUpdate(
-      { _id: productId, sellerId, listingType: 'private', status: { $in: ['active', 'archived'] } },
+      { _id: productId, sellerId, listingType: 'private', status: { $in: ['active', 'archived'] }, credentialsPurgedAt: { $exists: false } },
       {
         $set: { listingType: 'public', status: 'active' },
         $unset: { dealCode: '', dealExpiresAt: '', archiveReason: '' },

@@ -140,7 +140,9 @@ class NotificationService {
   async notifyPaymentWindowExpired(
     chatId: number | string | undefined | null,
     productTitle: string,
-    productId: string
+    productId: string,
+    /** Private deals are reachable only with their code, so the retry button must carry it. */
+    dealCode?: string
   ) {
     return this.send({
       type: 'buyer',
@@ -156,7 +158,11 @@ class NotificationService {
         '',
         `Hali ham qiziqsangiz, mahsulotni qaytadan oching va sotib olishni qayta boshlang.`,
       ].join('\n'),
-      buttons: [[{ text: '🔍 Mahsulotni ko‘rish', callback_data: `detail_${productId}` }]],
+      buttons: [[
+        dealCode
+          ? { text: '💳 Qayta to‘lash', callback_data: `buyd_${productId}_${dealCode}` }
+          : { text: '🔍 Mahsulotni ko‘rish', callback_data: `detail_${productId}` },
+      ]],
     });
   }
 

@@ -96,6 +96,25 @@ export function PaymentPanel({ transactionId }: { transactionId: string }) {
   }
 
   if (status.status === "expired" || status.status === "cancelled") {
+    // Money arrived after the window closed: it is being checked by a person. Do not invite a
+    // second payment.
+    if (status.paymentReview) {
+      return (
+        <div className="surface p-6 sm:p-8">
+          <Notice tone="warn">
+            To‘lovingiz qabul qilindi, lekin buyurtma muddati o‘tib ketgan edi. Pul yo‘qolmaydi:
+            administrator uni qo‘lda tekshiradi va buyurtmani tiklaydi yoki pulni qaytaradi.
+            Qayta to‘lamang.
+          </Notice>
+          <Link href="/katalog" className="btn-ghost mt-5">
+            Katalogga qaytish
+          </Link>
+          <p className="mt-4 break-all font-mono text-xs text-muted">
+            Buyurtma: {transactionId}
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="surface p-6 sm:p-8">
         <Notice tone="warn">
@@ -104,8 +123,12 @@ export function PaymentPanel({ transactionId }: { transactionId: string }) {
           qayta to‘lamang va buyurtma raqami bilan yordam xizmatiga yozing.
         </Notice>
         {status.productId && (
-          <Link href={`/sotib-olish/${status.productId}`} className="btn-accent mt-5">
-            Qayta to‘lash
+          <Link
+            // A private deal is reachable only through its code, never through the public buy page.
+            href={status.listingType === "private" ? "/kod" : `/sotib-olish/${status.productId}`}
+            className="btn-accent mt-5"
+          >
+            {status.listingType === "private" ? "Kodni qayta kiritish" : "Qayta to‘lash"}
           </Link>
         )}
         <Link href="/katalog" className="btn-ghost ml-2 mt-5">

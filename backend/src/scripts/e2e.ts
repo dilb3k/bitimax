@@ -617,6 +617,9 @@ async function scenarioSchedulers() {
   eq('muddati tugagan bitimda kod saqlanib qoldi', archived!.dealCode, p4.dealCode);
   eq('arxiv sababi: muddati tugagan', archived!.archiveReason, 'expired');
   eq('boshqa sotuvchi qayta ocholmaydi', await marketplace.reopenDeal(String(p4._id), String(buyer._id)), null);
+  await Product.updateOne({ _id: p4._id }, { $set: { credentialsPurgedAt: new Date() } });
+  eq('tozalangan ma’lumotli bitimni qayta ochib bo‘lmaydi', await marketplace.reopenDeal(String(p4._id), String(seller._id)), null);
+  await Product.updateOne({ _id: p4._id }, { $unset: { credentialsPurgedAt: '' } });
   const reopened = await marketplace.reopenDeal(String(p4._id), String(seller._id));
   eq('bitim qayta ochildi', reopened!.status, 'active');
   check('qayta ochilgan bitimning muddati kelajakda', reopened!.dealExpiresAt!.getTime() > Date.now() + 6 * 24 * 3600_000);
@@ -632,7 +635,11 @@ async function scenarioSchedulers() {
   const p6 = await marketplace.createDeal({ sellerId: String(seller._id), title: 'Kechikkan xaridor', price: 130_000, login: 'o', password: 'p' });
   await marketplace.initiatePurchase(String(p6._id), String(buyer._id), p6.dealCode!);
   await Product.updateOne({ _id: p6._id }, { $set: { dealExpiresAt: new Date(Date.now() - 60_000) } });
-  await paymentService.releaseReservation(String(p6._id));
+  // Another buyer's stale expiry must not free this buyer's live reservation.
+  const stranger = await makeUser(9391, 'job_stranger', 'buyer');
+  eq('boshqa xaridorning eskirgan bekor qilishi bandlikni bo‘shatmaydi', await paymentService.releaseReservation(String(p6._id), undefined, String(stranger._id)), null);
+  eq('bandlik saqlanib qoldi', (await Product.findById(p6._id))!.status, 'reserved');
+  await paymentService.releaseReservation(String(p6._id), undefined, String(buyer._id));
   const after = await Product.findById(p6._id);
   eq('to‘lov muddati o‘tgach bitim yana faol', after!.status, 'active');
   check('bitim kamida bir kun ochiq qoladi', after!.dealExpiresAt!.getTime() > Date.now() + 23 * 3600_000);
