@@ -643,6 +643,18 @@ async function scenarioSchedulers() {
   const after = await Product.findById(p6._id);
   eq('to‘lov muddati o‘tgach bitim yana faol', after!.status, 'active');
   check('bitim kamida bir kun ochiq qoladi', after!.dealExpiresAt!.getTime() > Date.now() + 23 * 3600_000);
+  // The extension has a ceiling: a deal older than 30 days is not kept alive any further.
+  // (createdAt is immutable through Mongoose, so the fixture is rewritten in the raw collection.)
+  const ancient = await marketplace.createDeal({ sellerId: String(seller._id), title: 'Eski bitim', price: 110_000, login: 's', password: 't' });
+  await Product.collection.updateOne({ _id: ancient._id }, { $set: { createdAt: new Date(Date.now() - 40 * 24 * 3600_000), dealExpiresAt: new Date(Date.now() + 3600_000) } });
+  await marketplace.initiatePurchase(String(ancient._id), String(buyer._id), ancient.dealCode!);
+  await paymentService.releaseReservation(String(ancient._id), undefined, String(buyer._id));
+  check('30 kundan eski bitim muddati uzaytirilmaydi', (await Product.findById(ancient._id))!.dealExpiresAt!.getTime() < Date.now() + 2 * 3600_000);
+
+  // A deal past its deadline cannot be bought while it waits for the sweeper.
+  const stale = await marketplace.createDeal({ sellerId: String(seller._id), title: 'Muddati o‘tgan', price: 115_000, login: 'u', password: 'v' });
+  await Product.updateOne({ _id: stale._id }, { $set: { dealExpiresAt: new Date(Date.now() - 60_000) } });
+  await expectThrow('muddati o‘tgan bitimni sotib olib bo‘lmaydi', () => marketplace.initiatePurchase(String(stale._id), String(buyer._id), stale.dealCode!), ProductUnavailableError);
   await expireUnclaimedDeals();
   eq('sweeper kechikkan xaridor bitimini o‘chirmaydi', (await Product.findById(p6._id))!.status, 'active');
 

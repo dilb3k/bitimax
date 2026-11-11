@@ -154,7 +154,11 @@ export async function settleDueEscrows(): Promise<{ released: number; refunded: 
         if (relisted?.listingType === 'private') {
           // Same rule as a lapsed payment: do not let the deal's old deadline kill it right away.
           const keepOpenUntil = new Date(Date.now() + 24 * 3600_000);
-          await Product.updateOne({ _id: relisted._id, dealExpiresAt: { $lt: keepOpenUntil } }, { $set: { dealExpiresAt: keepOpenUntil } });
+          // Same 30-day ceiling as releaseReservation.
+          await Product.updateOne(
+            { _id: relisted._id, dealExpiresAt: { $lt: keepOpenUntil }, createdAt: { $gt: new Date(Date.now() - 30 * 24 * 3600_000) } },
+            { $set: { dealExpiresAt: keepOpenUntil } }
+          );
         }
         refunded += 1;
         await notificationService.notifySeller(

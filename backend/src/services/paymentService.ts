@@ -185,7 +185,7 @@ export class PaymentService {
           {
             $or: [
               { listingType: { $ne: 'private' } },
-              ...(dealCode ? [{ listingType: 'private', dealCode: normalizeDealCode(dealCode) }] : []),
+              ...(dealCode ? [{ listingType: 'private', dealCode: normalizeDealCode(dealCode), dealExpiresAt: { $gt: new Date() } }] : []),
             ],
           },
           { $or: [{ reservedUntil: { $exists: false } }, { reservedUntil: { $lt: new Date() } }] },
@@ -352,7 +352,10 @@ export class PaymentService {
     // A private deal whose buyer was late must stay open for a while: if its original deadline
     // passed during the payment window the sweeper would archive it minutes after it came back,
     // and the seller would lose the deal (and its code) over the buyer's delay.
+    // Capped at 30 days after creation, so a buyer cannot keep a deal alive (and blocked)
+    // forever by starting payments and letting them lapse.
     const keepOpenUntil = new Date(Date.now() + 24 * 3600_000);
+    const hardLimit = { $add: ['$createdAt', 30 * 24 * 3600_000] };
     return Product.findOneAndUpdate(
       // With a buyerId only that buyer's own reservation is freed: a stale expiry job must not
       // release a newer buyer who has since reserved the same product.
@@ -363,8 +366,8 @@ export class PaymentService {
             status: 'active',
             dealExpiresAt: {
               $cond: [
-                { $and: [{ $eq: ['$listingType', 'private'] }, { $lt: [{ $ifNull: ['$dealExpiresAt', new Date(0)] }, keepOpenUntil] }] },
-                keepOpenUntil,
+                { $and: [{ $eq: ['$listingType', 'private'] }, { $lt: [{ $ifNull: ['$dealExpiresAt', new Date(0)] }, { $min: [keepOpenUntil, hardLimit] }] }] },
+                { $min: [keepOpenUntil, hardLimit] },
                 '$dealExpiresAt',
               ],
             },
