@@ -230,10 +230,10 @@ export function Catalog({ standalone = false }: { standalone?: boolean }) {
         </div>
       ) : loading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {/* One row only (1 / 2 / 3 cards by breakpoint). A taller placeholder than the loaded
+          {/* Two cards on phones, one row (2 / 3) on wider screens. A taller placeholder than the loaded
               list made the footer jump up by hundreds of pixels the moment products arrived. */}
           {[0, 1, 2].map((i) => (
-            <div key={i} className={i === 1 ? 'hidden sm:block' : i === 2 ? 'hidden lg:block' : undefined}>
+            <div key={i} className={i === 2 ? 'hidden lg:block' : undefined}>
               <ProductCardSkeleton />
             </div>
           ))}
