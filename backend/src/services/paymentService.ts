@@ -167,7 +167,7 @@ export class PaymentService {
         // Window over: close it so the buyer can start a fresh payment right away.
         const closed = await Transaction.findOneAndUpdate({ _id: existing._id, status: 'pending_payment' },
           { $set: { status: 'expired', cancelReason: 'payment_window_lapsed' } });
-        if (closed) await this.releaseReservation(productId);
+        if (closed) await this.releaseReservation(productId, undefined, buyerId);
       }
     }
     const windowMs = config.paymentProvider === 'hamyon'
@@ -206,7 +206,7 @@ export class PaymentService {
     // Blocked by default: a self-purchase costs only the commission but still counts as a
     // completed sale, which is how trust levels and price ceilings are earned.
     if (!config.allowSelfPurchase && String(product.sellerId) === String(buyerId)) {
-      await this.releaseReservation(String(product._id));
+      await this.releaseReservation(String(product._id), undefined, buyerId);
       throw new ForbiddenError('O‘z mahsulotingizni sotib ololmaysiz');
     }
 
@@ -217,7 +217,7 @@ export class PaymentService {
       try {
         return await this.demoPay(product, buyerId, expireAt);
       } catch (err) {
-        await this.releaseReservation(String(product._id));
+        await this.releaseReservation(String(product._id), undefined, buyerId);
         throw err;
       }
     }
@@ -229,7 +229,7 @@ export class PaymentService {
         if (config.testAutoConfirmAdmin) void this.testAutoPay(transaction, buyerId);
         return { transaction, product, demo: false as const, ...this.hamyonView(transaction) };
       } catch (err) {
-        await this.releaseReservation(String(product._id));
+        await this.releaseReservation(String(product._id), undefined, buyerId);
         throw err;
       }
     }
@@ -268,13 +268,13 @@ export class PaymentService {
       } catch (err: any) {
         // E11000 = collided with another still-pending transaction's uniqueAmount; retry.
         if (err?.code === 11000) continue;
-        await this.releaseReservation(String(product._id));
+        await this.releaseReservation(String(product._id), undefined, buyerId);
         throw err;
       }
     }
 
     // Could not find a free amount — don't strand the listing in `reserved`.
-    await this.releaseReservation(String(product._id));
+    await this.releaseReservation(String(product._id), undefined, buyerId);
     throw new Error('Could not allocate a unique payment amount, please try again');
   }
 
