@@ -11,7 +11,9 @@ export async function GET() {
     });
 
     const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    return NextResponse.json(data, res.ok
+      ? { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' } }
+      : { status: res.status });
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to fetch categories' },

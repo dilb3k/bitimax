@@ -16,7 +16,9 @@ export async function GET(request: NextRequest) {
     });
 
     const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    // Public catalog data: let Vercel's CDN serve it for a few seconds so visitors do not each
+    // pay the round trip to the API (and the API's rate limiter only sees cache misses).
+    return NextResponse.json(data, res.ok ? { status: res.status, headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=120' } } : { status: res.status });
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to fetch products' },

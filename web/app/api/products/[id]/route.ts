@@ -11,7 +11,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     });
 
     const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    return NextResponse.json(data, res.ok ? { status: res.status, headers: { 'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=60' } } : { status: res.status });
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to fetch product' },

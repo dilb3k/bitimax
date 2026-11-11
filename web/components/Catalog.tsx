@@ -9,6 +9,7 @@ import {
   fetchCategories,
   fetchProducts,
 } from '@/lib/api';
+import type { InitialCatalog } from '@/lib/server/catalog';
 import { ProductCard, ProductCardSkeleton } from './ProductCard';
 
 const SORTS = [
@@ -17,16 +18,15 @@ const SORTS = [
   { value: '-price', label: 'Qimmatidan' },
 ];
 
-export function Catalog({ standalone = false }: { standalone?: boolean }) {
+export function Catalog({ standalone = false, initial = null }: { standalone?: boolean; initial?: InitialCatalog | null }) {
   const Heading = standalone ? 'h1' : 'h2';
-  const [products, setProducts] = useState<Product[]>([]);
-  const [pagination, setPagination] = useState<Pagination>({
-    page: 1,
-    limit: 24,
-    total: 0,
-    pages: 0,
-  });
-  const [categories, setCategories] = useState<CategoryCount[]>([]);
+  const [products, setProducts] = useState<Product[]>(initial?.products ?? []);
+  const [pagination, setPagination] = useState<Pagination>(
+    initial?.pagination ?? { page: 1, limit: 24, total: 0, pages: 0 }
+  );
+  const [categories, setCategories] = useState<CategoryCount[]>(initial?.categories ?? []);
+  // The server already rendered the default first page; skip the redundant first fetches.
+  const skipInitialLoad = useRef(Boolean(initial));
   const [category, setCategory] = useState('');
   const [sort, setSort] = useState('-createdAt');
   const [searchInput, setSearchInput] = useState('');
@@ -36,11 +36,13 @@ export function Catalog({ standalone = false }: { standalone?: boolean }) {
   const [minPrice, setMinPrice] = useState<number | undefined>(undefined);
   const [maxPrice, setMaxPrice] = useState<number | undefined>(undefined);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initial);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (initial) return;
     fetchCategories().then(setCategories).catch(() => setCategories([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Debounce the search box. The previous version fired a request on every keystroke, which
@@ -92,6 +94,10 @@ export function Catalog({ standalone = false }: { standalone?: boolean }) {
   }, [page, category, search, sort, minPrice, maxPrice]);
 
   useEffect(() => {
+    if (skipInitialLoad.current) {
+      skipInitialLoad.current = false;
+      return;
+    }
     load();
     return () => requestRef.current?.abort();
   }, [load]);

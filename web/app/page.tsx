@@ -2,7 +2,9 @@ import Link from 'next/link';
 import { Header, Footer } from '@/components/Chrome';
 import { Catalog } from '@/components/Catalog';
 import { Icon } from '@/components/Icon';
-export default function HomePage() {
+import { getInitialCatalog } from '@/lib/server/catalog';
+export default async function HomePage() {
+  const initial = await getInitialCatalog();
   return <><Header /><main id="main-content">
     <section className="border-b border-line bg-surface">
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-5 py-8 sm:px-8 md:flex-row md:items-center md:justify-between md:py-12">
@@ -17,6 +19,6 @@ export default function HomePage() {
         </div>
       </div>
     </section>
-    <Catalog />
+    <Catalog initial={initial} />
   </main><Footer /></>;
 }
