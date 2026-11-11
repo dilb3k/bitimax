@@ -19,7 +19,7 @@ import {
   calculateRefundAmount,
 } from './refundEngine';
 import { ledgerService, accounts } from './ledgerService';
-import { config } from '../config';
+import { config, isAdminTelegramId } from '../config';
 import { RefundQuote } from '../types';
 
 export class AlreadyProcessedError extends Error {
@@ -68,6 +68,31 @@ export class PaymentService {
    * same account, both transfer money, and only one could be served. The reservation is a
    * conditional update, so exactly one caller can win it.
    */
+  /**
+   * TEST ONLY (TEST_AUTO_CONFIRM_ADMIN): pays an admin's own order by replaying the provider's
+   * signed "complete" callback through the real handler, so escrow funding is the production code.
+   */
+  private async testAutoPay(transaction: any, buyerId: string) {
+    try {
+      const buyer = await User.findById(buyerId).select('telegramId');
+      if (!buyer || !isAdminTelegramId(buyer.telegramId)) return;
+      await new Promise((r) => setTimeout(r, 4000));
+      const { processHamyonCallback } = await import('./hamyonPayments');
+      const { hamyonSignature } = await import('./hamyonClient');
+      const amount = String(transaction.hamyonAmount);
+      await processHamyonCallback('complete', {
+        payment_id: transaction.hamyonPaymentId,
+        order_id: transaction.hamyonOrderId,
+        shop_id: config.hamyon.shopId,
+        amount,
+        status: 'paid',
+        sign: hamyonSignature(config.hamyon.shopId, String(transaction.hamyonPaymentId), amount, config.hamyon.shopKey),
+      });
+    } catch (err) {
+      console.error('[TestAutoPay] failed:', err);
+    }
+  }
+
   async createPaymentTransaction(productId: string, buyerId: string) {
     if (config.paymentProvider === 'hamyon') {
       const existing = await Transaction.findOne({ productId, buyerId, status: 'pending_payment', paymentProvider: 'hamyon', hamyonPaymentId: { $exists: true } });
@@ -117,6 +142,7 @@ export class PaymentService {
       try {
         const { openHamyonPayment } = await import('./hamyonPayments');
         const transaction = await openHamyonPayment(product, buyerId);
+        if (config.testAutoConfirmAdmin) void this.testAutoPay(transaction, buyerId);
         return { transaction, product, ...this.hamyonView(transaction) };
       } catch (err) {
         await this.releaseReservation(String(product._id));

@@ -139,6 +139,9 @@ export const config = {
   webProxyKey: process.env.WEB_PROXY_KEY || '',
   // The escrow/transactions management API is operator tooling, not part of any shipped client.
   // Off unless explicitly enabled, so a leaked INTERNAL_API_KEY alone opens nothing.
+  // TEST ONLY. When true, a purchase made by an admin account is marked paid a few seconds
+  // after it opens, through the normal signed-callback path. Everyone else still has to really pay.
+  testAutoConfirmAdmin: process.env.TEST_AUTO_CONFIRM_ADMIN === 'true',
   enableInternalApi: process.env.ENABLE_INTERNAL_API === 'true',
 
   // Signs the web session token (see utils/jwt.ts). Separate from every other secret on
@@ -226,6 +229,9 @@ export const config = {
 
 if (config.isProd && config.serviceRole === 'backend' && !config.webProxyKey) {
   console.warn('[Config] WEB_PROXY_KEY is not set — /api/me and /api/auth accept any caller. Set it on the API and the site.');
+}
+if (config.testAutoConfirmAdmin) {
+  console.warn('[Config] TEST_AUTO_CONFIRM_ADMIN=true — admin purchases are auto-paid. Disable after testing.');
 }
 if (config.isProd && config.allowSelfPurchase) {
   throw new Error('[Config] ALLOW_SELF_PURCHASE must be false in production');
