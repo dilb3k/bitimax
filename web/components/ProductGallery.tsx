@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
+import { SafeImage } from './SafeImage';
 
 /**
  * Main image + thumbnail strip for a product's detail page. Kept as its own client component
@@ -22,15 +22,18 @@ export function ProductGallery({ images, title }: { images: string[]; title: str
   return (
     <div>
       <div className="surface aspect-[4/3] overflow-hidden">
-        <Image
-          key={images[active]}
-          src={images[active]}
-          alt={title}
-          width={800}
-          height={600}
-          priority
-          className="h-full w-full object-cover"
-        />
+        <div className="relative h-full w-full">
+          <SafeImage
+            key={images[active]}
+            src={images[active]}
+            alt={title}
+            width={640}
+            sizes="(max-width: 1024px) 100vw, 50vw"
+            priority
+            className="object-cover"
+            fallback={<div className="flex h-full w-full items-center justify-center text-faint"><PlaceholderIcon /></div>}
+          />
+        </div>
       </div>
 
       {images.length > 1 && (
@@ -46,7 +49,9 @@ export function ProductGallery({ images, title }: { images: string[]; title: str
                 i === active ? 'border-accent' : 'border-transparent opacity-70 hover:opacity-100'
               }`}
             >
-              <Image src={url} alt="" width={64} height={64} className="h-full w-full object-cover" />
+              <span className="relative block h-full w-full">
+                <SafeImage src={url} alt="" width={64} sizes="64px" className="object-cover" fallback={<span className="block h-full w-full bg-raised" />} />
+              </span>
             </button>
           ))}
         </div>

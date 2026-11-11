@@ -94,6 +94,12 @@ function makePhotoStep(sessionKey: 'productData' | 'dealData', onFinish: (ctx: a
       return;
     }
 
+    // A photo sent "as a file" arrives as a document and carries no compressed sizes.
+    if (ctx.message?.document) {
+      await ctx.reply('Rasmni fayl emas, oddiy rasm (Photo) ko‘rinishida yuboring — “Siqish” yoqilgan holda.');
+      return;
+    }
+
     // Anything else (stray text) — just remind them what's expected instead of silently
     // dropping it, since a wizard step with no reply looks broken.
     await ctx.replyWithHTML(photoStepPrompt(images.length), photoStepButtons(images.length));

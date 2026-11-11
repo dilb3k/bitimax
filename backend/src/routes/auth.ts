@@ -22,8 +22,8 @@ const router = Router();
  */
 
 // Starting a login is cheap for us and expensive to abuse in bulk; poll is the hot path.
-const startLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false, keyGenerator: clientIp });
-const pollLimiter = rateLimit({ windowMs: 5 * 60 * 1000, limit: 250, standardHeaders: true, legacyHeaders: false, keyGenerator: clientIp });
+const startLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 20, message: { error: 'Juda ko‘p urinish. Birozdan so‘ng qayta urinib ko‘ring.' }, standardHeaders: true, legacyHeaders: false, keyGenerator: clientIp });
+const pollLimiter = rateLimit({ windowMs: 5 * 60 * 1000, limit: 250, message: { error: 'Juda ko‘p urinish. Birozdan so‘ng qayta urinib ko‘ring.' }, standardHeaders: true, legacyHeaders: false, keyGenerator: clientIp });
 
 /** Human-comparable code shown on both screens. Ambiguous glyphs left out, as with deal codes. */
 function generatePairCode(): string {

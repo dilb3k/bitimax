@@ -188,7 +188,18 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   try {
     data = text ? JSON.parse(text) : null;
   } catch {
-    throw new ApiError('Server javobini o‘qib bo‘lmadi', response.status);
+    // Gateways and rate limiters can answer with plain text or HTML. Say what happened instead of
+    // a parser error.
+    throw new ApiError(
+      response.status === 413
+        ? 'Fayl juda katta, kichikroq rasm tanlang'
+        : response.status === 429
+          ? 'Juda ko‘p urinish. Birozdan so‘ng qayta urinib ko‘ring'
+          : response.status >= 500
+            ? 'Server vaqtincha ishlamayapti. Birozdan so‘ng qayta urinib ko‘ring'
+            : 'Server javobini o‘qib bo‘lmadi',
+      response.status
+    );
   }
 
   if (response.status === 401) {
@@ -284,10 +295,15 @@ export const api = {
     }),
 
   uploadImage: async (file: File): Promise<string> => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      throw new ApiError('Internet aloqasi yo‘q, ulanishni tekshirib qayta urining', 0);
+    }
     const data = await call<{ url: string }>('uploads', {
       method: 'POST',
       body: file,
       headers: { 'Content-Type': file.type },
+      // A cold-starting API plus a slow mobile uplink needs far more than the 30 s default.
+      signal: AbortSignal.timeout(90_000),
     });
     return data.url;
   },

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { backendFetch, isSameOrigin, unauthorized } from '@/lib/server/session';
 
 export const dynamic = 'force-dynamic';
+/** Uploads wait for the API to wake up and for Cloudinary. */
+export const maxDuration = 60;
 
 /**
  * The one door between the browser and the authenticated API.
@@ -20,7 +22,8 @@ const SEGMENT = /^[A-Za-z0-9_-]{1,48}$/;
 const MAX_SEGMENTS = 4;
 /** Only image bodies may be large; everything else is a small JSON document. */
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+/** Under the platform's own request-body limit (about 4.5 MB); the browser shrinks photos well below this. */
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
 function buildPath(segments: string[], search: string): string | null {
   if (segments.length === 0 || segments.length > MAX_SEGMENTS) return null;
@@ -46,7 +49,7 @@ async function proxy(request: Request, segments: string[]) {
     if (IMAGE_TYPES.some((type) => contentType.startsWith(type))) {
       const bytes = await request.arrayBuffer();
       if (bytes.byteLength > MAX_IMAGE_BYTES) {
-        return NextResponse.json({ error: 'Rasm 5 MB dan katta bo‘lmasligi kerak' }, { status: 413 });
+        return NextResponse.json({ error: 'Rasm juda katta, kichikroq rasm tanlang' }, { status: 413 });
       }
       body = bytes;
       headers['Content-Type'] = contentType.split(';')[0];
@@ -63,7 +66,13 @@ async function proxy(request: Request, segments: string[]) {
   }
 
   try {
-    const upstream = await backendFetch(path, { method, headers, body });
+    const isUpload = body instanceof ArrayBuffer;
+    const upstream = await backendFetch(path, {
+      method,
+      headers,
+      body,
+      ...(isUpload ? { signal: AbortSignal.timeout(55_000) } : {}),
+    });
     const text = await upstream.text();
     return new NextResponse(text, {
       status: upstream.status,

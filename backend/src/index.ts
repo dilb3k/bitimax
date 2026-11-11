@@ -43,6 +43,7 @@ app.use(healthRoutes);
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 120,
+  message: { error: 'Juda ko‘p so‘rov. Birozdan so‘ng qayta urinib ko‘ring.' },
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => clientIp(req),

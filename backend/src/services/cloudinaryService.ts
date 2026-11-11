@@ -8,6 +8,26 @@ export class ImageUploadError extends Error {
   }
 }
 
+/** The server has no Cloudinary credentials: not the user's fault, so it is a 503, not a 400. */
+export class ImageNotConfiguredError extends ImageUploadError {
+  constructor(message = 'Rasm yuklash hozircha ishlamayapti, admin bilan bog‘laning') {
+    super(message);
+    this.name = 'ImageNotConfiguredError';
+  }
+}
+
+/** fetch with a deadline; a stalled upstream must not hold the request open until the proxy gives up. */
+async function fetchWithTimeout(url: string, init: RequestInit, ms = 20_000): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+  } catch (error: any) {
+    if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+      throw new ImageUploadError('Rasm serveri javob bermadi, qayta urinib ko‘ring');
+    }
+    throw error;
+  }
+}
+
 /**
  * Signs a Cloudinary upload request server-side (rather than shipping an unsigned
  * `upload_preset` to the client) so only this backend — the one holding the API secret — can
@@ -35,13 +55,11 @@ function signParams(params: Record<string, string | number>): string {
  */
 export async function uploadTelegramPhoto(telegram: any, fileId: string): Promise<string> {
   if (!config.cloudinaryCloudName || !config.cloudinaryApiKey || !config.cloudinaryApiSecret) {
-    throw new ImageUploadError(
-      'Rasm yuklash sozlanmagan — admin bilan bog‘laning (Cloudinary kalitlar yo‘q)'
-    );
+    throw new ImageNotConfiguredError();
   }
 
   const fileLink = await telegram.getFileLink(fileId);
-  const fileResponse = await fetch(fileLink.toString());
+  const fileResponse = await fetchWithTimeout(fileLink.toString(), {});
   if (!fileResponse.ok) {
     throw new ImageUploadError('Telegramdan rasmni olib bo‘lmadi, qayta urinib ko‘ring');
   }
@@ -60,7 +78,7 @@ export async function uploadTelegramPhoto(telegram: any, fileId: string): Promis
   form.append('folder', paramsToSign.folder);
   form.append('signature', signature);
 
-  const uploadResponse = await fetch(
+  const uploadResponse = await fetchWithTimeout(
     `https://api.cloudinary.com/v1_1/${config.cloudinaryCloudName}/image/upload`,
     { method: 'POST', body: form }
   );
@@ -115,7 +133,7 @@ export function detectImageType(bytes: Buffer): 'jpg' | 'png' | 'webp' | null {
  */
 export async function uploadImageBuffer(bytes: Buffer, folder = 'bitmax/products'): Promise<string> {
   if (!config.cloudinaryCloudName || !config.cloudinaryApiKey || !config.cloudinaryApiSecret) {
-    throw new ImageUploadError('Rasm yuklash sozlanmagan — admin bilan bog‘laning');
+    throw new ImageNotConfiguredError();
   }
 
   const kind = detectImageType(bytes);
@@ -132,7 +150,7 @@ export async function uploadImageBuffer(bytes: Buffer, folder = 'bitmax/products
   form.append('folder', folder);
   form.append('signature', signature);
 
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `https://api.cloudinary.com/v1_1/${config.cloudinaryCloudName}/image/upload`,
     { method: 'POST', body: form }
   );

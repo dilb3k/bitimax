@@ -21,7 +21,7 @@ import { payoutService, InsufficientBalanceError } from '../services/payoutServi
 import { ledgerService } from '../services/ledgerService';
 import { describeRefundPolicy } from '../services/refundEngine';
 import { notificationService } from '../services/notificationService';
-import { uploadImageBuffer, ImageUploadError } from '../services/cloudinaryService';
+import { uploadImageBuffer, ImageUploadError, ImageNotConfiguredError } from '../services/cloudinaryService';
 import { CATEGORIES } from '../config';
 import { clientIp } from '../middleware/webProxy';
 import { config } from '../config';
@@ -46,10 +46,10 @@ const perUser = (req: Request) => String((req as AuthedRequest).authUser?._id ||
 // ── Rate limits ────────────────────────────────────────────────────────────────
 // Tight where an attempt is worth something to an attacker (guessing deal codes, opening
 // credentials), loose where the operation is just reading your own data.
-const writeLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: perUser });
-const codeLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: perUser });
-const revealLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: perUser });
-const uploadLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 40, standardHeaders: true, legacyHeaders: false, keyGenerator: perUser });
+const writeLimiter = rateLimit({ windowMs: 60_000, limit: 30, message: { error: 'Juda ko‘p urinish. Birozdan so‘ng qayta urinib ko‘ring.' }, standardHeaders: true, legacyHeaders: false, keyGenerator: perUser });
+const codeLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 10, message: { error: 'Juda ko‘p urinish. Birozdan so‘ng qayta urinib ko‘ring.' }, standardHeaders: true, legacyHeaders: false, keyGenerator: perUser });
+const revealLimiter = rateLimit({ windowMs: 60_000, limit: 10, message: { error: 'Juda ko‘p urinish. Birozdan so‘ng qayta urinib ko‘ring.' }, standardHeaders: true, legacyHeaders: false, keyGenerator: perUser });
+const uploadLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 120, message: { error: 'Juda ko‘p urinish. Birozdan so‘ng qayta urinib ko‘ring.' }, standardHeaders: true, legacyHeaders: false, keyGenerator: perUser });
 
 function actor(req: Request) {
   return (req as AuthedRequest).authUser;
@@ -62,6 +62,7 @@ function fail(res: Response, error: any, fallback = 'Xatolik yuz berdi') {
   if (error instanceof PaymentAllocationError) return res.status(503).json({ error: error.message });
   if (error instanceof ForbiddenError) return res.status(403).json({ error: 'Ruxsat yo‘q' });
   if (error instanceof InsufficientBalanceError) return res.status(400).json({ error: 'Balansda yetarli mablag‘ yo‘q' });
+  if (error instanceof ImageNotConfiguredError) return res.status(503).json({ error: error.message });
   if (error instanceof ImageUploadError) return res.status(400).json({ error: error.message });
   console.error('[Me] request failed:', error);
   return res.status(500).json({ error: config.isProd ? fallback : error?.message || fallback });

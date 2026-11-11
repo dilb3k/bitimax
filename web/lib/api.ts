@@ -64,6 +64,20 @@ export function formatUzs(amount: number): string {
   return `${Math.round(amount).toLocaleString('en-US').replace(/,/g, ' ')} so‘m`;
 }
 
+/**
+ * Cloudinary delivery URL with on-the-fly resizing: `f_auto` serves WebP/AVIF where supported,
+ * `q_auto` picks the quality, `c_limit` never upscales. The stored URL is left untouched.
+ */
+export function cdnImage(url: string, width: number): string {
+  const marker = '/image/upload/';
+  const at = url.indexOf(marker);
+  if (at === -1 || !url.startsWith('https://res.cloudinary.com/')) return url;
+  const head = url.slice(0, at + marker.length);
+  const rest = url.slice(at + marker.length);
+  if (/^(?:[a-z]{1,3}_[^/]+,?)+\//.test(rest)) return url; // already transformed
+  return `${head}f_auto,q_auto,c_limit,w_${Math.round(width)}/${rest}`;
+}
+
 const MONTHS = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avgust', 'sentabr', 'oktabr', 'noyabr', 'dekabr'];
 
 /**

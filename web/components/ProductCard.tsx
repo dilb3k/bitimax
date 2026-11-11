@@ -1,16 +1,16 @@
-import Image from 'next/image';
 import Link from 'next/link';
 import { Product, TRUST_LABEL, formatUzs } from '@/lib/api';
 import { Icon } from './Icon';
+import { SafeImage } from './SafeImage';
 
 export function ProductCard({ product }: { product: Product }) {
   const seller = product.seller;
   const thumbnail = product.images?.[0];
+  const placeholder = <div className="flex h-full flex-col items-center justify-center gap-3 text-muted"><Icon name="grid" width={30} height={30} /><span className="text-sm font-medium">{product.category}</span></div>;
   return <article className="surface group overflow-hidden transition-colors hover:border-accent/60">
     <Link href={`/product/${product._id}`} className="flex h-full flex-col focus-visible:outline-offset-[-3px]" aria-label={`${product.title}, ${formatUzs(product.price)}`}>
       <div className="relative aspect-[16/10] overflow-hidden border-b border-line bg-raised">
-        {thumbnail ? <Image src={thumbnail} alt={product.title} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-cover" /> :
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-muted"><Icon name="grid" width={30} height={30} /><span className="text-sm font-medium">{product.category}</span></div>}
+        {thumbnail ? <SafeImage src={thumbnail} alt={product.title} width={400} sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-cover" fallback={placeholder} /> : placeholder}
         <span className="absolute bottom-3 left-3 rounded-md border border-line bg-surface px-2 py-1 text-xs font-medium">{product.category}</span>
       </div>
       <div className="flex flex-1 flex-col p-4">
