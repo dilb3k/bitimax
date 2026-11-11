@@ -56,6 +56,11 @@ export class PayoutService {
   }
 
   async requestPayout(userId: string, amount: number) {
+    // Demo purchases move no real money, so balances built from them must never become real
+    // payouts. Withdrawals stay closed for as long as DEMO_PAYMENTS is on.
+    if (config.demoPayments) {
+      throw new Error('Demo rejimida pul yechish vaqtincha o‘chirilgan');
+    }
     if (!Number.isInteger(amount) || amount < config.minPayoutAmount) {
       throw new Error(`Minimal yechish summasi ${config.minPayoutAmount.toLocaleString()} UZS`);
     }

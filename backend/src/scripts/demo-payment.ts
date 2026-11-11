@@ -39,6 +39,9 @@ async function main() {
   assert.equal(total, 0, 'ledger balanced');
 
   await assert.rejects(marketplace.initiatePurchase(String(deal._id), String(buyer._id), deal.dealCode!), 'cannot buy twice');
+  const { payoutService } = await import('../services/payoutService');
+  await assert.rejects(payoutService.requestPayout(String(seller._id), 50_000), /Demo rejimida/, 'payouts closed in demo mode');
+
   console.log('demo payment: OK');
   await mongoose.disconnect();
 }
