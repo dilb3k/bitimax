@@ -213,6 +213,8 @@ export function OrderView({ orderId }: { orderId: string }) {
                   </div>
                 </div>
               )}
+              {/* Hidden while the confirm panel is open so there is exactly one way forward. */}
+              {!confirmReady && (
               <div className="mt-4 flex flex-col gap-2.5 sm:flex-row">
                 <SubmitButton
                   busy={busy === "confirm"}
@@ -234,6 +236,7 @@ export function OrderView({ orderId }: { orderId: string }) {
                   <Icon name="refresh" /> Qaytarish
                 </button>
               </div>
+              )}
               <p className="mt-3 text-xs leading-relaxed text-faint">
                 Tasdiqlagach pul sotuvchiga o‘tadi va buni orqaga qaytarib
                 bo‘lmaydi.
@@ -324,7 +327,7 @@ function Secret({ label, value }: { label: string; value: string }) {
         <dt className="text-xs text-faint">{label}</dt>
         <dd className="mt-0.5 break-all font-mono text-sm text-ink">{value}</dd>
       </div>
-      <CopyButton value={value} />
+      <CopyButton value={value} label="Nusxa olish" name={label} />
     </div>
   );
 }

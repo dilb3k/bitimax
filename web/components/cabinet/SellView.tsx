@@ -123,7 +123,7 @@ export function SellView() {
                     </p>
                   </div>
                   <div className="ml-auto flex gap-2">
-                    <CopyButton value={listing.dealCode} />
+                    <CopyButton value={listing.dealCode} name="bitim kodi" />
 
                   </div>
                 </div>

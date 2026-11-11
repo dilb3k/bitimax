@@ -61,7 +61,34 @@ export interface ProductQuery {
 
 /** Formats so'm the way local price tags do — thin-spaced groups, no decimals. */
 export function formatUzs(amount: number): string {
-  return `${Math.round(amount).toLocaleString('en-US').replace(/,/g, ' ')} so'm`;
+  return `${Math.round(amount).toLocaleString('en-US').replace(/,/g, ' ')} so‘m`;
+}
+
+const MONTHS = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avgust', 'sentabr', 'oktabr', 'noyabr', 'dekabr'];
+
+/**
+ * Date parts in Tashkent time. The 'uz-UZ' locale is not shipped by every browser and falls back
+ * to raw tokens like "M11", so month names are spelled out here instead of trusting Intl data.
+ */
+function tashkentParts(iso: string | number | Date) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Tashkent', year: 'numeric', month: 'numeric', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(iso));
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  return { year: get('year'), month: get('month'), day: get('day'), hour: get('hour'), minute: get('minute') };
+}
+
+/** "11-noyabr, 18:21" */
+export function formatDateTime(iso: string | number | Date): string {
+  const p = tashkentParts(iso);
+  return `${p.day}-${MONTHS[p.month - 1]}, ${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
+}
+
+/** "11.11.2026" */
+export function formatDate(iso: string | number | Date): string {
+  const p = tashkentParts(iso);
+  return `${String(p.day).padStart(2, '0')}.${String(p.month).padStart(2, '0')}.${p.year}`;
 }
 
 export function timeAgo(iso: string): string {
@@ -72,7 +99,7 @@ export function timeAgo(iso: string): string {
   if (hours < 24) return `${hours} soat oldin`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days} kun oldin`;
-  return new Date(iso).toLocaleDateString('uz-UZ');
+  return formatDate(iso);
 }
 
 export const TRUST_LABEL: Record<Seller['trustLevel'], string> = {

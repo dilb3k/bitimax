@@ -173,7 +173,7 @@ export function Countdown({ to, onDone }: { to: string; onDone?: () => void }) {
 }
 
 /** Copy-to-clipboard control for card numbers, amounts and deal codes. */
-export function CopyButton({ value, label = 'Nusxa olish' }: { value: string; label?: string }) {
+export function CopyButton({ value, label = 'Nusxa olish', name }: { value: string; label?: string; name?: string }) {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
 
@@ -193,18 +193,11 @@ export function CopyButton({ value, label = 'Nusxa olish' }: { value: string; la
       type="button"
       onClick={copy}
       className="min-h-[44px] rounded-md border border-line px-2.5 py-1.5 text-xs text-muted transition hover:bg-raised hover:text-ink"
-      aria-label={label}
+      aria-label={name ? `${label}: ${name}` : label}
     >
       <span aria-live="polite">{copyError ? 'Nusxalanmadi — matnni belgilang' : copied ? 'Nusxa olindi' : label}</span>
     </button>
   );
 }
 
-export function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('uz-UZ', {
-    day: 'numeric',
-    month: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
+export { formatDateTime } from '@/lib/api';

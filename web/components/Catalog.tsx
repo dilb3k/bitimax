@@ -184,7 +184,7 @@ export function Catalog({ standalone = false, initial = null }: { standalone?: b
           type="text"
           inputMode="numeric"
           value={minPriceInput}
-          onChange={(event) => setMinPriceInput(event.target.value)}
+          onChange={(event) => setMinPriceInput(event.target.value.replace(/\D/g, ''))}
           placeholder="Eng kam"
           className="field w-28 py-2 text-sm"
         />
@@ -194,7 +194,7 @@ export function Catalog({ standalone = false, initial = null }: { standalone?: b
           type="text"
           inputMode="numeric"
           value={maxPriceInput}
-          onChange={(event) => setMaxPriceInput(event.target.value)}
+          onChange={(event) => setMaxPriceInput(event.target.value.replace(/\D/g, ''))}
           placeholder="Eng ko‘p"
           className="field w-28 py-2 text-sm"
         />

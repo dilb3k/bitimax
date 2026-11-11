@@ -32,6 +32,10 @@ export function DealCodePanel() {
 
   async function lookup(event: React.FormEvent) {
     event.preventDefault();
+    if (code.replace(/[^A-Za-z0-9]/g, '').length !== 8) {
+      setError('Kod 8 ta belgidan iborat bo‘lishi kerak (masalan, ABCD-2345).');
+      return;
+    }
     setBusy('lookup');
     setError(null);
     try {
@@ -141,7 +145,6 @@ export function DealCodePanel() {
         busy={busy === 'lookup'}
         type="submit"
         className="btn-accent mt-5 w-full"
-        disabled={code.replace(/-/g, '').length !== 8}
       >
         Bitimni ochish
       </SubmitButton>

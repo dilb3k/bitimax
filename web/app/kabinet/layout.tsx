@@ -23,7 +23,10 @@ export default async function CabinetLayout({ children }: { children: React.Reac
         <CabinetNav />
         <div className="min-w-0">{children}</div>
       </main>
-      <Footer />
+      {/* Clears the fixed bottom tab bar on phones, which otherwise covers the footer links. */}
+      <div className="pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0">
+        <Footer />
+      </div>
     </>
   );
 }

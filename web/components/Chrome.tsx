@@ -122,9 +122,9 @@ export function Footer() {
     <div className="mx-auto flex max-w-6xl flex-col gap-5 px-5 py-7 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-8">
       <div className="flex items-center gap-3"><LogoMark size={22} /><span className="font-semibold">Bitmax</span><span className="text-faint">© {new Date().getFullYear()}</span></div>
       <nav aria-label="Qo‘shimcha havolalar" className="flex flex-wrap gap-x-6 gap-y-3 text-muted">
-        <Link href="/shartlar" className="hover:text-ink">Savdo shartlari</Link>
-        <a href={botLink()} target="_blank" rel="noopener noreferrer" className="hover:text-ink">Telegram bot</a>
-        <a href="https://t.me/bitimax_admin" target="_blank" rel="noopener noreferrer" className="hover:text-ink">Yordam</a>
+        <Link href="/shartlar" className="inline-block py-2.5 hover:text-ink">Savdo shartlari</Link>
+        <a href={botLink()} target="_blank" rel="noopener noreferrer" className="inline-block py-2.5 hover:text-ink">Telegram bot</a>
+        <a href="https://t.me/bitimax_admin" target="_blank" rel="noopener noreferrer" className="inline-block py-2.5 hover:text-ink">Yordam</a>
       </nav>
     </div>
   </footer>;

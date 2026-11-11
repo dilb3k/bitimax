@@ -1,5 +1,8 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Header, Footer } from '@/components/Chrome';
+
+export const metadata: Metadata = { title: 'Sahifa topilmadi' };
 
 export default function NotFound() {
   return (

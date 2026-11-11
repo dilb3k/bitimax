@@ -30,9 +30,9 @@ async function getProduct(id: string): Promise<Product | null> {
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const product = await getProduct((await params).id);
-  if (!product) return { title: 'Mahsulot topilmadi — Bitmax' };
+  if (!product) return { title: 'Mahsulot topilmadi' };
   return {
-    title: `${product.title} — Bitmax`,
+    title: product.title, // the layout template appends " · Bitmax"
     description: product.description.slice(0, 160),
   };
 }

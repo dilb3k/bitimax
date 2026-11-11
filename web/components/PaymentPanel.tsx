@@ -180,7 +180,7 @@ export function PaymentPanel({ transactionId }: { transactionId: string }) {
           <p className="tnum font-mono text-3xl font-bold text-ink">
             {payAmount}
           </p>
-          <CopyButton value={String(payAmount)} />
+          <CopyButton value={String(payAmount)} name="summa" />
         </div>
         <p className="mt-2 text-xs leading-relaxed text-warn">
           Summaning oxirgi raqamlari aynan sizning buyurtmangizni aniqlaydi.
@@ -199,7 +199,7 @@ export function PaymentPanel({ transactionId }: { transactionId: string }) {
             <p className="tnum font-mono text-xl font-semibold tracking-wide text-ink">
               {status.card.number.replace(/(.{4})/g, "$1 ").trim()}
             </p>
-            <CopyButton value={status.card.number} />
+            <CopyButton value={status.card.number} name="karta raqami" />
           </div>
           <dl className="mt-3 space-y-1.5 border-t border-line pt-3 text-sm">
             {status.card.holder && <Row label="Egasi" value={status.card.holder} />}
