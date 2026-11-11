@@ -176,6 +176,7 @@ async function applyCancel(tx: ITransaction, reason?: string): Promise<CallbackR
     { $set: { status: 'expired', cancelReason: 'hamyon_cancel', ...(reason ? { hamyonCancelReason: reason } : {}) } });
   if (!expired) return ok('duplicate');
   await paymentService.releaseReservation(String(tx.productId));
+  await paymentService.notifySellerDealReopened(String(tx.productId)).catch(() => undefined);
   const [buyer, product] = await Promise.all([User.findById(tx.buyerId).select('telegramId'), Product.findById(tx.productId).select('title')]);
   if (buyer?.telegramId && product) await notificationService.notifyPaymentWindowExpired(buyer.telegramId, product.title || 'Mahsulot', String(product._id));
   return ok();

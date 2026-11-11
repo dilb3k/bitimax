@@ -612,6 +612,48 @@ async function scenarioSchedulers() {
   check('muddati o‘tgan kod bekor qilindi', killed >= 1);
   eq('eski kod endi ishlamaydi', await marketplace.findDealByCode(p4.dealCode!), null);
 
+  // (e) The code is NOT thrown away: the seller still has it and can reopen the same deal.
+  const archived = await Product.findById(p4._id);
+  eq('muddati tugagan bitimda kod saqlanib qoldi', archived!.dealCode, p4.dealCode);
+  eq('arxiv sababi: muddati tugagan', archived!.archiveReason, 'expired');
+  eq('boshqa sotuvchi qayta ocholmaydi', await marketplace.reopenDeal(String(p4._id), String(buyer._id)), null);
+  const reopened = await marketplace.reopenDeal(String(p4._id), String(seller._id));
+  eq('bitim qayta ochildi', reopened!.status, 'active');
+  check('qayta ochilgan bitimning muddati kelajakda', reopened!.dealExpiresAt!.getTime() > Date.now() + 6 * 24 * 3600_000);
+  check('o‘sha kod yana ishlaydi', Boolean(await marketplace.findDealByCode(p4.dealCode!)));
+
+  // (f) A seller-cancelled deal loses its code for good and cannot be reopened.
+  const p5 = await marketplace.createDeal({ sellerId: String(seller._id), title: 'Bekor qilingan', price: 120_000, login: 'm', password: 'n' });
+  await marketplace.cancelListing(String(p5._id), String(seller._id));
+  eq('bekor qilingan bitimni qayta ochib bo‘lmaydi', await marketplace.reopenDeal(String(p5._id), String(seller._id)), null);
+
+  // (g) A buyer who is late must not cost the seller the deal: releasing the reservation keeps
+  // it open even when its original deadline passed during the payment window.
+  const p6 = await marketplace.createDeal({ sellerId: String(seller._id), title: 'Kechikkan xaridor', price: 130_000, login: 'o', password: 'p' });
+  await marketplace.initiatePurchase(String(p6._id), String(buyer._id), p6.dealCode!);
+  await Product.updateOne({ _id: p6._id }, { $set: { dealExpiresAt: new Date(Date.now() - 60_000) } });
+  await paymentService.releaseReservation(String(p6._id));
+  const after = await Product.findById(p6._id);
+  eq('to‘lov muddati o‘tgach bitim yana faol', after!.status, 'active');
+  check('bitim kamida bir kun ochiq qoladi', after!.dealExpiresAt!.getTime() > Date.now() + 23 * 3600_000);
+  await expireUnclaimedDeals();
+  eq('sweeper kechikkan xaridor bitimini o‘chirmaydi', (await Product.findById(p6._id))!.status, 'active');
+
+  // (h) Any private deal can be published as a normal catalog listing.
+  const p7 = await marketplace.createDeal({ sellerId: String(seller._id), title: 'Katalogga chiqadi', description: 'Bu akkaunt haqida batafsil tavsif, yigirma belgidan ko‘p.', price: 140_000, login: 'q', password: 'r' });
+  const published = await marketplace.publishListing(String(p7._id), String(seller._id));
+  eq('bitim oddiy e’longa aylandi', published!.listingType, 'public');
+  eq('kod olib tashlandi', published!.dealCode, undefined);
+  eq('eski kod endi ishlamaydi (e’lon)', await marketplace.findDealByCode(p7.dealCode!), null);
+  const inCatalog = await marketplace.getActiveProducts(1, 50);
+  check('e’lon katalogda ko‘rinadi', inCatalog.products.some((x: any) => String(x._id) === String(p7._id)));
+  await expectThrow('boshqa sotuvchi katalogga chiqara olmaydi', async () => {
+    const r = await marketplace.publishListing(String(p6._id), String(buyer._id));
+    if (!r) throw new Error('refused');
+  });
+  await Product.updateOne({ _id: p6._id }, { $set: { description: 'qisqa' } });
+  await expectThrow('qisqa tavsifli bitimni chiqarib bo‘lmaydi', () => marketplace.publishListing(String(p6._id), String(seller._id)));
+
   await assertLedgerBalanced('fon vazifalaridan keyin');
 }
 

@@ -56,6 +56,8 @@ export async function expirePendingTransactions(): Promise<number> {
 
     await paymentService.releaseReservation(String(product?._id || transaction.productId));
     expired += 1;
+    // A private deal's seller is waiting on this buyer: say that the code is live again.
+    await paymentService.notifySellerDealReopened(String(product?._id || transaction.productId)).catch(() => undefined);
 
     // Previously silent — a buyer who missed the window had no way to learn the reservation
     // lapsed short of reopening the listing and noticing it was gone.
@@ -222,7 +224,9 @@ export async function expireUnclaimedDeals(): Promise<number> {
   for (const deal of stale) {
     const claimed = await Product.findOneAndUpdate(
       { _id: deal._id, status: 'active' },
-      { $set: { status: 'archived' }, $unset: { dealCode: '' } }
+      // The code is kept on purpose: it no longer works while the deal is archived, but the seller
+      // can still see it and reopen the deal instead of losing it for good.
+      { $set: { status: 'archived', archiveReason: 'expired' } }
     );
     if (!claimed) continue;
     expiredCount += 1;

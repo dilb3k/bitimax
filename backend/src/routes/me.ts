@@ -575,12 +575,45 @@ router.get('/listings', async (req: Request, res: Response) => {
         viewCount: p.viewCount,
         createdAt: p.createdAt,
         moderationNote: p.moderationNote || null,
-        // Only a live, unclaimed private deal still has a usable code.
+        // The seller can always read the code of a deal that is open, held by a buyer who is still
+        // paying, or lapsed (and so can be reopened) — never lose it over a late buyer.
         dealCode:
-          p.listingType === 'private' && p.dealCode && p.status === 'active' ? formatDealCode(p.dealCode) : null,
+          p.listingType === 'private' && p.dealCode && ['active', 'reserved'].includes(p.status)
+            ? formatDealCode(p.dealCode)
+            : p.listingType === 'private' && p.dealCode && p.status === 'archived' && p.archiveReason === 'expired'
+              ? formatDealCode(p.dealCode)
+              : null,
         dealExpiresAt: p.dealExpiresAt || null,
+        archiveReason: p.archiveReason || null,
       })),
     });
+  } catch (error: any) {
+    return fail(res, error);
+  }
+});
+
+const stateConflict = 'E’lon topilmadi yoki hozir band — birozdan so‘ng qayta urinib ko‘ring';
+
+/** Turns a private deal into an ordinary catalog listing. */
+router.post('/listings/:id/publish', writeLimiter, validateObjectId(), async (req: Request, res: Response) => {
+  try {
+    const user = actor(req);
+    const product = await marketplace.publishListing(String(req.params.id), String(user._id));
+    if (!product) return res.status(409).json({ error: stateConflict });
+    res.json({ ok: true, id: String(product._id) });
+  } catch (error: any) {
+    if (badRequest(res, error)) return;
+    return fail(res, error);
+  }
+});
+
+/** Reopens a private deal that lapsed: same code, fresh deadline. */
+router.post('/listings/:id/reopen', writeLimiter, validateObjectId(), async (req: Request, res: Response) => {
+  try {
+    const user = actor(req);
+    const product = await marketplace.reopenDeal(String(req.params.id), String(user._id));
+    if (!product) return res.status(409).json({ error: 'Bu bitimni qayta ochib bo‘lmaydi' });
+    res.json({ ok: true, dealExpiresAt: product.dealExpiresAt });
   } catch (error: any) {
     return fail(res, error);
   }

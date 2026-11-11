@@ -114,6 +114,7 @@ export interface Listing {
   moderationNote: string | null;
   dealCode: string | null;
   dealExpiresAt: string | null;
+  archiveReason?: 'expired' | 'cancelled' | null;
 }
 
 export interface Sale {
@@ -293,6 +294,9 @@ export const api = {
     post<{ id: string; amount: number; netAmount: number; destinationMasked: string; status: string }>('payouts', {
       amount,
     }),
+
+  publishListing: (id: string) => post<{ ok: boolean; id: string }>(`listings/${id}/publish`),
+  reopenListing: (id: string) => post<{ ok: boolean }>(`listings/${id}/reopen`),
 
   uploadImage: async (file: File): Promise<string> => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {

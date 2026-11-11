@@ -124,9 +124,10 @@ class NotificationService {
         `⏳ <b>Bitim kodi muddati tugadi</b>`,
         '',
         `<b>${escapeHtml(dealTitle)}</b>`,
-        `Kod <code>${escapeHtml(dealCode)}</code> hech kim tomonidan ishlatilmadi va endi amal qilmaydi.`,
+        `Kod <code>${escapeHtml(dealCode)}</code> muddati tugadi va vaqtincha amal qilmaydi.`,
         '',
-        `<i>Xaridor hali ham qiziqsa, “🤝 Kafil bitim” dan yangi kod yaratib bering.</i>`,
+        `<i>Xaridor hali ham qiziqsa: “📋 E’lonlarim” → shu bitim → “♻️ Qayta ochish” (kod o‘sha-o‘sha qoladi). ` +
+          `Yoki “📢 Katalogga chiqarish” bilan oddiy e’longa aylantiring.</i>`,
       ].join('\n'),
     });
   }

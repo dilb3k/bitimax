@@ -257,7 +257,46 @@ export class MarketplaceService {
   async cancelListing(productId: string, sellerId: string) {
     return Product.findOneAndUpdate(
       { _id: productId, sellerId, status: { $in: ['active', 'pending_review', 'draft', 'rejected'] } },
-      { $set: { status: 'archived' }, $unset: { dealCode: '' } },
+      { $set: { status: 'archived', archiveReason: 'cancelled' }, $unset: { dealCode: '' } },
+      { new: true }
+    );
+  }
+
+  /**
+   * Brings an expired private deal back: same code, fresh deadline. Only deals that lapsed on
+   * their own can be reopened — one the seller cancelled lost its code on purpose.
+   */
+  async reopenDeal(productId: string, sellerId: string) {
+    return Product.findOneAndUpdate(
+      {
+        _id: productId,
+        sellerId,
+        listingType: 'private',
+        status: 'archived',
+        archiveReason: 'expired',
+        dealCode: { $exists: true },
+      },
+      { $set: { status: 'active', dealExpiresAt: new Date(Date.now() + 7 * 24 * 3600_000) }, $unset: { archiveReason: '' } },
+      { new: true }
+    );
+  }
+
+  /**
+   * Turns a private deal (or an archived one) into an ordinary catalog listing. The code stops
+   * working and is removed, since the account is no longer reserved for one agreed buyer.
+   * Refused while a buyer holds a reservation: status must be active or archived.
+   */
+  async publishListing(productId: string, sellerId: string) {
+    const existing = await Product.findOne({ _id: productId, sellerId }).select('description');
+    if (existing && existing.description.trim().length < 20) {
+      throw Object.assign(new Error('Katalogga chiqarish uchun avval tavsifni to‘ldiring (kamida 20 belgi)'), { status: 400 });
+    }
+    return Product.findOneAndUpdate(
+      { _id: productId, sellerId, listingType: 'private', status: { $in: ['active', 'archived'] } },
+      {
+        $set: { listingType: 'public', status: 'active' },
+        $unset: { dealCode: '', dealExpiresAt: '', archiveReason: '' },
+      },
       { new: true }
     );
   }

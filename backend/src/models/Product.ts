@@ -34,6 +34,8 @@ export interface IProduct extends Document {
   dealCode?: string;
   /** Private deals that nobody claims are archived by the sweeper at this time. */
   dealExpiresAt?: Date;
+  /** Why an archived listing was archived: 'expired' deals can be reopened, 'cancelled' ones were the seller's choice. */
+  archiveReason?: 'expired' | 'cancelled';
 
   status: ProductStatus;
   moderationNote?: string;
@@ -87,6 +89,7 @@ const ProductSchema = new Schema<IProduct>(
     // every public listing leaves this unset and they must not collide with each other.
     dealCode: { type: String, unique: true, sparse: true, uppercase: true, trim: true },
     dealExpiresAt: { type: Date },
+    archiveReason: { type: String, enum: ['expired', 'cancelled'] },
 
     status: {
       type: String,

@@ -12,6 +12,8 @@ import {
   smsFingerprint,
   maskCard,
   normalizeDealCode,
+  escapeHtml,
+  formatDeadline,
 } from '../utils/helpers';
 import {
   calculateSellerPayout,
@@ -207,6 +209,9 @@ export class PaymentService {
       throw new ForbiddenError('O‘z mahsulotingizni sotib ololmaysiz');
     }
 
+    // The seller of a private deal is waiting on this one buyer: tell them payment has started.
+    if (product.listingType === 'private') void this.notifySellerBuyerStarted(product, expireAt).catch(() => undefined);
+
     if (config.demoPayments) {
       try {
         return await this.demoPay(product, buyerId, expireAt);
@@ -343,10 +348,52 @@ export class PaymentService {
 
   /** Returns a reserved-but-unpaid product to the catalog. */
   async releaseReservation(productId: string, session?: mongoose.ClientSession) {
+    // A private deal whose buyer was late must stay open for a while: if its original deadline
+    // passed during the payment window the sweeper would archive it minutes after it came back,
+    // and the seller would lose the deal (and its code) over the buyer's delay.
+    const keepOpenUntil = new Date(Date.now() + 24 * 3600_000);
     return Product.findOneAndUpdate(
       { _id: productId, status: 'reserved' },
-      { $set: { status: 'active' }, $unset: { reservedBy: '', reservedUntil: '' } },
+      [
+        {
+          $set: {
+            status: 'active',
+            dealExpiresAt: {
+              $cond: [
+                { $and: [{ $eq: ['$listingType', 'private'] }, { $lt: [{ $ifNull: ['$dealExpiresAt', new Date(0)] }, keepOpenUntil] }] },
+                keepOpenUntil,
+                '$dealExpiresAt',
+              ],
+            },
+          },
+        },
+        { $unset: ['reservedBy', 'reservedUntil'] },
+      ],
       session ? { session } : {}
+    );
+  }
+
+  private async notifySellerBuyerStarted(product: any, until: Date) {
+    const seller = await User.findById(product.sellerId).select('telegramId');
+    if (!seller?.telegramId) return;
+    await notificationService.notifySeller(
+      seller.telegramId,
+      `🛒 <b>Xaridor to‘lovni boshladi</b>\n\n<b>${escapeHtml(product.title)}</b>\n` +
+        `To‘lash muddati: ${formatDeadline(until)} gacha. Shu vaqtgacha bitim band.`
+    );
+  }
+
+  /** Tells the seller of a private deal that its buyer's payment window ran out and the code works again. */
+  async notifySellerDealReopened(productId: string) {
+    const product = await Product.findById(productId).select('title listingType dealCode sellerId');
+    if (!product || product.listingType !== 'private' || !product.dealCode) return;
+    const seller = await User.findById(product.sellerId).select('telegramId');
+    if (!seller?.telegramId) return;
+    await notificationService.notifySeller(
+      seller.telegramId,
+      `⏰ <b>To‘lov vaqti tugadi</b>\n\n<b>${escapeHtml(product.title)}</b>\n` +
+        `Xaridor ajratilgan vaqtda to‘lamadi. Bitim yana ochiq: kod <code>${escapeHtml(product.dealCode)}</code> ishlaydi.\n\n` +
+        `<i>Kodni “📋 E’lonlarim” bo‘limidan istalgan payt qayta ko‘rishingiz mumkin.</i>`
     );
   }
 

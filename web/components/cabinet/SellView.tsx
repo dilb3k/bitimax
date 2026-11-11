@@ -36,6 +36,19 @@ export function SellView() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  async function run(id: string, action: () => Promise<unknown>, failure: string) {
+    setBusyId(id);
+    setError(null);
+    try {
+      await action();
+      await listings.reload();
+    } catch (err: any) {
+      setError(err?.message || failure);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function cancel(id: string) {
     setBusyId(id);
     setError(null);
@@ -117,7 +130,11 @@ export function SellView() {
               {listing.dealCode && (
                 <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-raised px-3.5 py-3">
                   <div>
-                    <p className="text-xs text-faint">Bitim kodi</p>
+                    <p className="text-xs text-faint">
+                      Bitim kodi
+                      {listing.status === 'reserved' && ' · xaridor to‘lamoqda'}
+                      {listing.status === 'archived' && ' · muddati tugagan'}
+                    </p>
                     <p className="tnum font-mono text-lg font-bold tracking-wider text-ink">
                       {listing.dealCode}
                     </p>
@@ -126,6 +143,33 @@ export function SellView() {
                     <CopyButton value={listing.dealCode} name="bitim kodi" />
 
                   </div>
+                </div>
+              )}
+
+              {listing.listingType === 'private' && (listing.status === 'active' || listing.status === 'archived') && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {listing.status === 'archived' && listing.archiveReason === 'expired' && (
+                    <button
+                      type="button"
+                      className="btn-ghost min-h-[44px] text-sm"
+                      disabled={busyId !== null}
+                      onClick={() => run(listing.id, () => api.reopenListing(listing.id), 'Qayta ochib bo‘lmadi')}
+                    >
+                      ♻️ Qayta ochish
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn-ghost min-h-[44px] text-sm"
+                    disabled={busyId !== null}
+                    onClick={() => {
+                      if (window.confirm('Katalogga chiqarilgach bitim kodi ishlamaydi va e’lon hammaga ko‘rinadi. Davom etasizmi?')) {
+                        void run(listing.id, () => api.publishListing(listing.id), 'Katalogga chiqarib bo‘lmadi');
+                      }
+                    }}
+                  >
+                    📢 Katalogga chiqarish
+                  </button>
                 </div>
               )}
 

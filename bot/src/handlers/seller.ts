@@ -8,7 +8,7 @@ import { User } from '../core';
 import { marketplace } from '../core';
 import { notificationService } from '../core';
 import { config, CATEGORIES } from '../core';
-import { escapeHtml, formatUzs, formatDealCode, isValidUzCard, maskCard } from '../core';
+import { escapeHtml, formatUzs, formatDealCode, formatDateTime, isValidUzCard, maskCard } from '../core';
 import { uploadTelegramPhoto, ImageUploadError } from '../core';
 import { bailIfCancelled } from '../wizards/guard';
 import {
@@ -193,7 +193,7 @@ async function showMyListings(ctx: any, requestedPage = 1, edit = false) {
   const pages = Math.max(1, Math.ceil(count / 10));
   const page = Math.min(pages, Math.max(1, requestedPage));
   const products = await Product.find({ sellerId: user._id }).select('-sensitiveData').sort({ createdAt: -1, _id: -1 }).skip((page - 1) * 10).limit(10);
-  const rows: any[][] = products.map(p => [{ text: `${p.listingCode || '—'} · ${p.title.slice(0, 35)} · ${listingStatus[p.status]}`, callback_data: `my_listing_${p._id}` }]);
+  const rows: any[][] = products.map(p => [{ text: `${p.listingCode || '—'} · ${p.title.slice(0, 35)} · ${p.status === 'archived' && p.archiveReason === 'expired' ? 'Muddati tugagan' : listingStatus[p.status]}`, callback_data: `my_listing_${p._id}` }]);
   const pager = [];
   if (page > 1) pager.push({ text: '← Oldingi', callback_data: `my_listings_${page - 1}` });
   if (page < pages) pager.push({ text: 'Keyingi →', callback_data: `my_listings_${page + 1}` });
@@ -241,23 +241,88 @@ sellerHandler.action(/^le_(title|desc|price|cat|photo|login)_([a-f0-9]{24})$/, a
 });
 
 sellerHandler.action(/^my_listings_(\d+)$/, async ctx => { await ctx.answerCbQuery(); await showMyListings(ctx, Number(ctx.match[1]), true); });
-sellerHandler.action(/^my_listing_([a-f0-9]{24})$/, async ctx => {
-  const user = await User.findOne({ telegramId: ctx.from.id });
-  const p = user && await Product.findOne({ _id: ctx.match[1], sellerId: user._id }).select('-sensitiveData');
+/** Renders one listing's card with the actions that make sense for its current state. */
+async function showListingCard(ctx: any, productId: string, ownerTelegramId: number) {
+  const user = await User.findOne({ telegramId: ownerTelegramId });
+  const p = user && await Product.findOne({ _id: productId, sellerId: user._id }).select('-sensitiveData');
   if (!p) return void await ctx.answerCbQuery('E’lon topilmadi');
-  await ctx.answerCbQuery();
+  await ctx.answerCbQuery().catch(() => undefined);
+
+  const isPrivate = p.listingType === 'private';
+  const lapsed = isPrivate && p.status === 'archived' && p.archiveReason === 'expired' && Boolean(p.dealCode);
   const rows: any[][] = [];
   if (EDITABLE_STATUSES.includes(p.status)) {
     rows.push([{ text: '✏️ Tahrirlash', callback_data: `listing_edit_${p._id}` }]);
+    if (isPrivate) rows.push([{ text: '📢 Katalogga chiqarish', callback_data: `listing_pub_ask_${p._id}` }]);
     rows.push([{ text: 'E’lonni bekor qilish', callback_data: `listing_cancel_ask_${p._id}` }]);
+  } else if (lapsed) {
+    rows.push([{ text: '♻️ Qayta ochish (kod o‘sha-o‘sha)', callback_data: `listing_reopen_${p._id}` }]);
+    rows.push([{ text: '📢 Katalogga chiqarish', callback_data: `listing_pub_ask_${p._id}` }]);
   }
   rows.push([{ text: '← E’lonlarim', callback_data: 'my_listings_1' }]);
-  await ctx.editMessageText([
-    `<b>${escapeHtml(p.title)}</b>`, `ID: <code>${p.listingCode || '—'}</code>`,
-    `Narx: <b>${formatUzs(p.price)}</b>`, `Holat: ${listingStatus[p.status]}`,
-    p.listingType === 'private' && p.dealCode && p.status === 'active' ? `Bitim kodi: <code>${formatDealCode(p.dealCode)}</code>` : '',
-    '', 'Band qilingan yoki sotilgan e’lonni bekor qilib bo‘lmaydi.',
-  ].join('\n'), { parse_mode: 'HTML', reply_markup: { inline_keyboard: rows } });
+
+  // The code is always readable while the deal can still happen: open, held by a buyer who is
+  // still paying, or lapsed and waiting to be reopened.
+  const showCode = isPrivate && p.dealCode && (['active', 'reserved'].includes(p.status) || lapsed);
+  const lines = [
+    `<b>${escapeHtml(p.title)}</b>`,
+    `ID: <code>${p.listingCode || '—'}</code>`,
+    `Narx: <b>${formatUzs(p.price)}</b>`,
+    `Holat: ${lapsed ? 'Muddati tugagan' : listingStatus[p.status]}`,
+    showCode ? `Bitim kodi: <code>${formatDealCode(p.dealCode!)}</code>` : '',
+    isPrivate && p.status === 'reserved' ? '⏳ Xaridor hozir to‘layapti — to‘lamasa, bitim yana ochiladi va kod ishlayveradi.' : '',
+    isPrivate && p.status === 'active' && p.dealExpiresAt ? `Kod ${formatDateTime(p.dealExpiresAt)} gacha amal qiladi.` : '',
+    lapsed ? 'Kod hozir ishlamaydi. “Qayta ochish” bilan o‘sha kod yana ishlaydi.' : '',
+    '',
+    'Band qilingan yoki sotilgan e’lonni bekor qilib yoki tahrirlab bo‘lmaydi.',
+  ];
+  await ctx.editMessageText(lines.join('\n'), { parse_mode: 'HTML', reply_markup: { inline_keyboard: rows } });
+}
+
+sellerHandler.action(/^my_listing_([a-f0-9]{24})$/, async ctx => showListingCard(ctx, ctx.match[1], ctx.from.id));
+
+sellerHandler.action(/^listing_pub_ask_([a-f0-9]{24})$/, async ctx => {
+  await ctx.answerCbQuery();
+  await ctx.editMessageText(
+    '📢 <b>Katalogga chiqarasizmi?</b>\n\nE’lon hammaga ko‘rinadi va istalgan xaridor sotib ola oladi. Bitim kodi ishlamay qoladi.',
+    { parse_mode: 'HTML', reply_markup: { inline_keyboard: [
+      [{ text: 'Ha, chiqarish', callback_data: `listing_pub_do_${ctx.match[1]}` }],
+      [{ text: 'Ortga qaytish', callback_data: `my_listing_${ctx.match[1]}` }],
+    ] } }
+  );
+});
+sellerHandler.action(/^listing_pub_do_([a-f0-9]{24})$/, async ctx => {
+  const user = await User.findOne({ telegramId: ctx.from.id });
+  if (!user) return void await ctx.answerCbQuery('Avval /start bosing');
+  try {
+    const published = await marketplace.publishListing(ctx.match[1], String(user._id));
+    if (!published) return void await ctx.answerCbQuery('E’lon topilmadi yoki hozir band — birozdan so‘ng urinib ko‘ring', { show_alert: true });
+    await ctx.answerCbQuery('Katalogga chiqarildi');
+    await ctx.editMessageText(
+      `✅ <b>${escapeHtml(published.title)}</b> katalogga chiqarildi.\nID: <code>${published.listingCode || '—'}</code>`,
+      { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '← E’lonlarim', callback_data: 'my_listings_1' }]] } }
+    );
+  } catch (error: any) {
+    if (error?.status === 400) {
+      return void await ctx.editMessageText(`⚠️ ${escapeHtml(error.message)}`, {
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: [
+          [{ text: '✏️ Tavsifni tahrirlash', callback_data: `le_desc_${ctx.match[1]}` }],
+          [{ text: '← Ortga', callback_data: `my_listing_${ctx.match[1]}` }],
+        ] },
+      });
+    }
+    console.error('[Bot] publish failed:', error);
+    await ctx.answerCbQuery('Xatolik yuz berdi', { show_alert: true });
+  }
+});
+sellerHandler.action(/^listing_reopen_([a-f0-9]{24})$/, async ctx => {
+  const user = await User.findOne({ telegramId: ctx.from.id });
+  if (!user) return void await ctx.answerCbQuery('Avval /start bosing');
+  const reopened = await marketplace.reopenDeal(ctx.match[1], String(user._id));
+  if (!reopened) return void await ctx.answerCbQuery('Bu bitimni qayta ochib bo‘lmaydi', { show_alert: true });
+  await ctx.answerCbQuery('Bitim qayta ochildi');
+  await showListingCard(ctx, ctx.match[1], ctx.from.id);
 });
 sellerHandler.action(/^listing_cancel_ask_([a-f0-9]{24})$/, async ctx => {
   await ctx.answerCbQuery();
