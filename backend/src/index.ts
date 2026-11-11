@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { hamyonWebhook } from './routes/hamyonWebhook';
 import express, { NextFunction, Request, Response } from 'express';
 import cors from 'cors';
@@ -76,7 +77,7 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 async function start() {
   await connectDatabase();
 
-  app.listen(config.port, () => {
+  const server = app.listen(config.port, () => {
     console.log(`[Server] Bitmax API running on port ${config.port}`);
     if (config.paymentProvider === 'sms') console.log(`[Server] SMS Webhook: POST /api/sms-webhook`);
     console.log(`[Server] Products API: GET /api/products`);
@@ -99,8 +100,23 @@ async function start() {
   // extra replica so only one instance sweeps.
   startScheduler();
 
+  // Graceful shutdown: stop taking work, let in-flight requests (escrow transactions!) finish,
+  // close the DB, then exit. Replacing Node's default SIGTERM handling without exiting made
+  // Render wait and SIGKILL the process mid-transaction.
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-    process.once(signal, () => stopScheduler());
+    process.once(signal, () => {
+      console.log(`[Server] ${signal} received, shutting down`);
+      stopScheduler();
+      const force = setTimeout(() => process.exit(1), 10_000);
+      force.unref?.();
+      server.close(async () => {
+        try {
+          await mongoose.disconnect();
+        } finally {
+          process.exit(0);
+        }
+      });
+    });
   }
 }
 

@@ -3,11 +3,11 @@ import { Transaction } from '../models/Transaction';
 import { EscrowHold } from '../models/EscrowHold';
 import { Product } from '../models/Product';
 import { PaymentInbox } from '../models/PaymentInbox';
-import { paymentService } from '../services/paymentService';
+import { paymentService, AlreadyProcessedError } from '../services/paymentService';
 import { ledgerService } from '../services/ledgerService';
 import { notificationService } from '../services/notificationService';
 import { config } from '../config';
-import { formatUzs } from '../utils/helpers';
+import { formatUzs, formatDateTime, escapeHtml } from '../utils/helpers';
 
 /**
  * The platform's clock.
@@ -42,6 +42,7 @@ export async function expirePendingTransactions(): Promise<number> {
 
   let expired = 0;
   for (const transaction of stale) {
+   try {
     const claimed = await Transaction.findOneAndUpdate(
       { _id: transaction._id, status: 'pending_payment' },
       { $set: { status: 'expired', cancelReason: 'payment_window_lapsed' } }
@@ -65,10 +66,33 @@ export async function expirePendingTransactions(): Promise<number> {
         String(product._id)
       );
     }
+   } catch (err) {
+    // One bad row must not stop the rest; the orphan sweeper below frees any stuck reservation.
+    console.error(`[Jobs] Failed to expire transaction ${transaction._id}:`, err);
+   }
   }
 
   if (expired > 0) console.log(`[Jobs] Expired ${expired} pending transaction(s)`);
   return expired;
+}
+
+/**
+ * Frees products stuck in `reserved`: a crash between reserving a listing and creating its
+ * transaction, or a failed release after expiry, would otherwise hide the listing forever
+ * (a product can only be reserved from `active`). Only reservations past their deadline with no
+ * live payment attached are touched.
+ */
+export async function releaseOrphanedReservations(): Promise<number> {
+  const cutoff = new Date(Date.now() - 5 * 60_000);
+  const stuck = await Product.find({ status: 'reserved', reservedUntil: { $lt: cutoff } }).select('_id').limit(200);
+  let freed = 0;
+  for (const product of stuck) {
+    const live = await Transaction.exists({ productId: product._id, status: { $in: ['pending_payment', 'paid'] } });
+    if (live) continue;
+    if (await paymentService.releaseReservation(String(product._id))) freed += 1;
+  }
+  if (freed > 0) console.log(`[Jobs] Released ${freed} orphaned reservation(s)`);
+  return freed;
 }
 
 /**
@@ -102,14 +126,14 @@ export async function settleDueEscrows(): Promise<{ released: number; refunded: 
         await notificationService.notifySeller(
           seller?.telegramId,
           `✅ <b>Bitim yakunlandi</b>\n\n` +
-            `Mahsulot: ${product?.title || '—'}\n` +
+            `Mahsulot: ${escapeHtml(product?.title || '—')}\n` +
             `Sizga o‘tkazildi: <b>${formatUzs(hold.sellerPayout)}</b>\n` +
             `Komissiya: ${formatUzs(hold.commission)}\n\n` +
             `<i>${config.autoReleaseHours} soat ichida e’tiroz bildirilmadi.</i>`
         );
         await notificationService.notifyBuyer(
           buyer?.telegramId,
-          `ℹ️ <b>Buyurtma yopildi</b>\n\n${product?.title || '—'} bo‘yicha ` +
+          `ℹ️ <b>Buyurtma yopildi</b>\n\n${escapeHtml(product?.title || '—')} bo‘yicha ` +
             `${config.autoReleaseHours} soatlik muddat tugadi va pul sotuvchiga o‘tkazildi.`
         );
       } else {
@@ -133,6 +157,8 @@ export async function settleDueEscrows(): Promise<{ released: number; refunded: 
         );
       }
     } catch (err) {
+      // Someone (the buyer, a refund) settled or revealed it between our read and the claim.
+      if (err instanceof AlreadyProcessedError) continue;
       console.error(`[Jobs] Failed to settle escrow ${hold._id}:`, err);
     }
   }
@@ -154,7 +180,8 @@ export async function purgeExpiredCredentials(): Promise<number> {
   const result = await Product.updateMany(
     {
       status: { $in: ['sold', 'refunded', 'archived'] },
-      soldAt: { $lt: cutoff },
+      // Listings that were never sold (archived/cancelled) have no soldAt; age them by updatedAt.
+      $or: [{ soldAt: { $lt: cutoff } }, { soldAt: { $exists: false }, updatedAt: { $lt: cutoff } }],
       credentialsPurgedAt: { $exists: false },
     },
     {
@@ -246,7 +273,7 @@ export async function alertUnmatchedPayments(): Promise<number> {
   if (pending.length === 0) return 0;
 
   const lines = pending
-    .map((p, index) => `${index + 1}. ${p.parsedAmount ? formatUzs(p.parsedAmount) : '—'} — ${p.receivedAt.toLocaleString('uz-UZ')}`)
+    .map((p, index) => `${index + 1}. ${p.parsedAmount ? formatUzs(p.parsedAmount) : '—'} — ${formatDateTime(p.receivedAt)}`)
     .join('\n');
 
   await notificationService.notifyAdmin(
@@ -263,6 +290,7 @@ export async function alertUnmatchedPayments(): Promise<number> {
 const JOBS: Job[] = [
   { name: 'hamyonNotifications', intervalMs: 60_000, run: sweepHamyonNotifications },
   { name: 'expirePendingTransactions', intervalMs: 60_000, run: async () => void (await expirePendingTransactions()) },
+  { name: 'releaseOrphanedReservations', intervalMs: 5 * 60_000, run: async () => void (await releaseOrphanedReservations()) },
   { name: 'settleDueEscrows', intervalMs: 5 * 60_000, run: async () => void (await settleDueEscrows()) },
   { name: 'alertUnmatchedPayments', intervalMs: 15 * 60_000, run: async () => void (await alertUnmatchedPayments()) },
   { name: 'reconcileBalances', intervalMs: 60 * 60_000, run: async () => void (await reconcileBalances()) },
@@ -289,6 +317,11 @@ export function startScheduler(): void {
     const timer = setInterval(tick, job.intervalMs);
     timer.unref?.();
     timers.push(timer);
+    // Also run once shortly after boot: on a host that sleeps or restarts often the long
+    // intervals (hourly reconcile, 6-hourly purge) would otherwise never get a turn.
+    const first = setTimeout(tick, 30_000);
+    first.unref?.();
+    timers.push(first as unknown as ReturnType<typeof setInterval>);
   }
 
   console.log(`[Jobs] Scheduler started with ${JOBS.length} jobs`);

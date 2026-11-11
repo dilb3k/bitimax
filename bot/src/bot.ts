@@ -144,6 +144,9 @@ export async function createBot(): Promise<Telegraf<any> | null> {
 
   bot.catch((err: any, ctx: any) => {
     console.error(`[Bot] Error handling ${ctx?.updateType}:`, err);
+    // Without a reply the button spinner hangs and the user cannot tell whether it worked.
+    if (ctx?.callbackQuery) void ctx.answerCbQuery('Xatolik yuz berdi. Qayta urinib ko‘ring.').catch(() => undefined);
+    else void ctx?.reply?.('Xatolik yuz berdi. Qayta urinib ko‘ring yoki /start bosing.').catch(() => undefined);
   });
 
   return bot;

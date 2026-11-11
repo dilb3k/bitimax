@@ -9,7 +9,7 @@ import { payoutService, InsufficientBalanceError } from '../core';
 import { ledgerService } from '../core';
 import { describeRefundPolicy } from '../core';
 import { config } from '../core';
-import { escapeHtml, formatUzs } from '../core';
+import { escapeHtml, formatUzs, formatDateTime } from '../core';
 import { bailIfCancelled } from '../wizards/guard';
 import {
   mainMenu,
@@ -148,7 +148,7 @@ startHandler.action('balance_statement', async (ctx) => {
         const sign = entry.amount > 0 ? '➕' : '➖';
         return (
           `${sign} <b>${formatUzs(Math.abs(entry.amount))}</b> — ${labels[entry.type] || entry.type}\n` +
-          `   <i>${entry.createdAt.toLocaleString('uz-UZ')}</i>`
+          `   <i>${formatDateTime(entry.createdAt)}</i>`
         );
       }),
     ].join('\n')

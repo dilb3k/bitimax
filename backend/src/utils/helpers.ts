@@ -156,8 +156,19 @@ export function formatUzs(amount: number): string {
  * are both phrased as "N soat ichida" in the product's copy, which made them easy to conflate —
  * an absolute timestamp for each is unambiguous regardless of which clock it belongs to.
  */
+export const DISPLAY_TIME_ZONE = 'Asia/Tashkent';
+
+/**
+ * Full date and time for messages. Servers run in UTC, so without an explicit zone every
+ * timestamp a Tashkent user saw was five hours off.
+ */
+export function formatDateTime(date: Date | string | number): string {
+  return new Date(date).toLocaleString('uz-UZ', { timeZone: DISPLAY_TIME_ZONE });
+}
+
 export function formatDeadline(date: Date): string {
   return date.toLocaleString('uz-UZ', {
+    timeZone: DISPLAY_TIME_ZONE,
     day: 'numeric',
     month: 'long',
     hour: '2-digit',

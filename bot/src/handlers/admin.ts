@@ -13,7 +13,7 @@ import { payoutService } from '../core';
 import { ledgerService, accounts } from '../core';
 import { adminMenuKeyboard, moderationButtons, payoutButtons } from '../keyboards';
 import { config, isAdminTelegramId } from '../core';
-import { escapeHtml, formatUzs } from '../core';
+import { escapeHtml, formatUzs, formatDateTime } from '../core';
 import { bailIfCancelled } from '../wizards/guard';
 
 export const adminHandler = new Composer();
@@ -415,7 +415,7 @@ adminHandler.hears(["💸 To‘lov so‘rovlari","To‘lov so‘rovlari"], async
         `O‘tkazish: <b>${formatUzs(payout.netAmount)}</b>`,
         `Karta: <code>${payout.destinationMasked}</code>`,
         `Egasi: ${escapeHtml(payout.destinationHolder || '—')}`,
-        `Sana: ${payout.requestedAt.toLocaleString('uz-UZ')}`,
+        `Sana: ${formatDateTime(payout.requestedAt)}`,
       ].join('\n'),
       payoutButtons(String(payout._id))
     );
@@ -490,7 +490,7 @@ adminHandler.hears(["📥 To‘lov inbox","To‘lov inbox"], async (ctx) => {
   for (const item of unmatched) {
     await ctx.replyWithHTML([
       '<b>📥 Egasi topilmagan to‘lov</b>',
-      `<b>${item.parsedAmount ? formatUzs(item.parsedAmount) : '—'}</b> — ${item.receivedAt.toLocaleString('uz-UZ')}`,
+      `<b>${item.parsedAmount ? formatUzs(item.parsedAmount) : '—'}</b> — ${formatDateTime(item.receivedAt)}`,
       `<code>${escapeHtml(item.rawText.slice(0, 90))}</code>`, '',
       item.reminderMuted ? '🔕 Takroriy eslatma o‘chirilgan.' : '🔔 Takroriy eslatma yoqilgan.',
       '<i>Eslatmani o‘chirish to‘lovni hal qilingan deb belgilamaydi. Yozuv saqlanadi.</i>',
@@ -562,7 +562,7 @@ adminHandler.hears(["⚖️ Nizolar","Nizolar"], async (ctx) => {
         `Sotuvchi: @${escapeHtml(seller?.username || String(seller?.telegramId))}`,
         `Sabab: ${escapeHtml(dispute.reason)}`,
         `Dalillar: ${dispute.evidence.length} ta`,
-        `SLA: ${dispute.slaDueAt.toLocaleString('uz-UZ')}`,
+        `SLA: ${formatDateTime(dispute.slaDueAt)}`,
         '',
         `<i>Hal qilish: /dispute_${dispute._id}</i>`,
       ].join('\n')
@@ -660,8 +660,8 @@ adminHandler.action(/^adm_details_(.+)$/, async (ctx) => {
       `Sotuvchi: @${escapeHtml(seller?.username || String(seller?.telegramId))} (${seller?.trustLevel})`,
       '',
       `Holat: <b>${escrow.status}</b>`,
-      `Sotib olingan: ${escrow.boughtAt.toLocaleString('uz-UZ')}`,
-      `Ma’lumot ochilgan: ${escrow.credentialsRevealedAt?.toLocaleString('uz-UZ') || 'ochilmagan'}`,
+      `Sotib olingan: ${formatDateTime(escrow.boughtAt)}`,
+      `Ma’lumot ochilgan: ${(escrow.credentialsRevealedAt ? formatDateTime(escrow.credentialsRevealedAt) : undefined) || 'ochilmagan'}`,
       `Ko‘rish soni: ${escrow.credentialRevealCount}`,
       `Sabab: ${escapeHtml(escrow.refundReason || '—')}`,
     ].join('\n'),

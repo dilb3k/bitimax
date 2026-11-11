@@ -55,7 +55,13 @@ async function main() {
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
       markStopping();
-      bot?.stop(signal);
+      // In webhook mode launch() never ran and stop() throws "Bot is not running!", which used
+      // to kill the process before in-flight requests drained.
+      try {
+        bot?.stop(signal);
+      } catch {
+        /* not running */
+      }
       server.close(() => process.exit(0));
     });
   }

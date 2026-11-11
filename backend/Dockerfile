@@ -1,8 +1,8 @@
 # Bitimax backend — HTTP API + scheduler. The Telegram bot is a separate service (../bot).
 #
-# This is a long-running stateful service (Telegraf long-polling and setInterval sweeps),
+# This is a long-running stateful service (setInterval scheduler sweeps and HTTP callbacks),
 # so it cannot run on a serverless platform. Any host that runs a container works:
-# Railway, Render, Fly.io, a plain VPS with docker compose.
+# Render, Railway, Fly.io, a plain VPS with docker compose.
 
 # ─── Build ─────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS build

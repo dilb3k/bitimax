@@ -101,7 +101,6 @@ Bitimax/
 │   │   ├── middleware/        # Sessiya, internal auth, ObjectId tekshiruvi
 │   │   ├── services/          # To‘lov, escrow, ledger, payout, rasmlar
 │   │   ├── jobs/              # Davriy vazifalar
-│   │   ├── bot/               # Telegram handler, keyboard va wizardlar
 │   │   ├── scripts/           # Migratsiya, seed, regressiya testlari
 │   │   ├── types/             # Domen turlari va statuslar
 │   │   └── utils/             # Shifrlash, JWT, ID va yordamchi funksiyalar
@@ -412,21 +411,28 @@ Web odatda `http://localhost:3000`da ochiladi. Rootdan umumiy `npm run dev` buyr
 
 | Buyruq | Vazifa |
 | --- | --- |
-| `npm run dev` | TypeScript watch rejimida API + bot + scheduler |
+| `npm run dev` | TypeScript watch rejimida API + scheduler (bot alohida: `bot/`) |
 | `npm run build` | `dist/`ga TypeScript kompilyatsiyasi |
 | `npm start` | Tayyor `dist/index.js`ni ishga tushirish |
 | `npm run typecheck` | Fayl yaratmasdan turlarni tekshirish |
 | `npm test` | Unit testlar |
-| `npm run bot` | Alohida bot uchun watch rejimi |
-| `npm run bot:build` | Kompilyatsiya va alohida botni ishga tushirish |
 | `npm run migrate` | Eski ma’lumotlarni v2 sxemasiga ko‘chirish |
 | `npm run seed` | Seed skripti; ishlatishdan oldin target DB va kodni tekshirish kerak |
 | `npm run e2e` | Alohida e2e skripti; muhit va yon ta’sirlarini oldindan ko‘rish kerak |
 | `npm run test:hamyon` | Mock HamyonAPI + DB integratsiya testi |
 | `npm run test:web` | Web proxy + backend regressiyasi |
+| `npm run test:demo` | `DEMO_PAYMENTS=true` rejimi: to‘lov darrov tasdiqlanadi, escrow va ledger to‘g‘ri, payout yopiq (test bazasi kerak) |
+
+### Bot — `bot/` ichidan
+
+| Buyruq | Vazifa |
+| --- | --- |
+| `npm run dev` | Watch rejimi (`BOT_WEBHOOK_URL` bo‘sh bo‘lsa long polling) |
+| `npm run build` / `npm start` | Kompilyatsiya / production (webhook) |
+| `npm run typecheck`, `npm test` | Turlar va unit testlar |
 | `npm run test:marketplace` | Marketplace, kodlar va sotuvchi oqimi regressiyasi |
 
-Asosiy server botni o‘zi ishga tushirgani uchun bir token bilan alohida `npm run bot`ni parallel ishga tushirmang.
+Bot alohida servis: backend uni ishga tushirmaydi. Bir token bilan ikki joyda parallel polling ishga tushirmang.
 
 ### Web — `web/` ichidan
 
@@ -436,12 +442,12 @@ Asosiy server botni o‘zi ishga tushirgani uchun bir token bilan alohida `npm r
 | `npm run build` | Production build |
 | `npm start` | Tayyor production buildni ishga tushirish |
 | `npm test` | Navigation va redirect testlari |
-| `npm run lint` | Paketdagi `next lint` skripti |
+| `npm run lint` | `eslint .` (Next 16 da `next lint` olib tashlangan) |
 
 Integratsiya testlarining alohida shartlari:
 
-- `test:marketplace`: lokal MongoDB `127.0.0.1:27920`; vaqtinchalik `marketplace_test_*` bazasi yaratiladi va tozalanadi.
-- `test:web`: `127.0.0.1:27919`da `tezchecktest` replica set, 3000-portda Next dev va `BACKEND_URL=http://localhost:3001`. Test backendni 3001-portda o‘zi ochadi; bu port bo‘sh bo‘lishi kerak.
+- `test:marketplace` (bot ichida): lokal MongoDB `127.0.0.1:27920`; vaqtinchalik `marketplace_test_*` bazasi yaratiladi va tozalanadi.
+- `test:web`: `127.0.0.1:27919`da `bitimaxtest` replica set, 3000-portda Next dev va `BACKEND_URL=http://localhost:3001`. Test backendni 3001-portda o‘zi ochadi; bu port bo‘sh bo‘lishi kerak.
 - `test:hamyon`: shu 27919-portdagi replica set kerak; provayder ichki mock (4920-port), real so‘rov yuborilmaydi.
 
 Simulyatsiyani repo ildizidan boshlash:

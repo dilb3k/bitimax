@@ -30,14 +30,14 @@ The web proxy caches policy for 60 seconds. If unavailable, the interface direct
 
 `GET /api/me/orders` pending entries additionally return `paymentAmount`, `paymentProvider`, and boolean `paymentReview`. Existing fields remain compatible. No changes to settlement arithmetic.
 
-Logout reports failure when the backend cannot revoke sessions; it no longer silently claims all devices were signed out.
+Logout always clears this browser's session cookie; if the backend cannot revoke sessions server-side the response carries a `warning` instead of failing, so a shared-device user can always sign out locally.
 
 ## Validation
 
 - Backend `npm test`: refund arithmetic, HamyonAPI signature/client checks, credentials, SMS matching and sessions.
 - Web `npm test`: internal redirect preservation and malicious URL rejection.
-- Backend `npm run test:web`: real API routes + Next proxy, local disposable `web_test_*` database only. Run local Mongo on 27919 with replica set `tezchecktest`, and Next dev on 3000 with `BACKEND_URL=http://localhost:3001`. The test starts API port3001; no Telegram bot or external payment provider starts. Fixtures are removed in finally.
-- Public policy contract: `postman request https://bitimax-bot.onrender.com/api/products/policy --script-post-request @postman/tests/public-policy.js`.
+- Backend `npm run test:web`: real API routes + Next proxy, local disposable `web_test_*` database only. Run local Mongo on 27919 with replica set `bitimaxtest`, and Next dev on 3000 with `BACKEND_URL=http://localhost:3001`. The test starts API port3001; no Telegram bot or external payment provider starts. Fixtures are removed in finally.
+- Public policy contract: `postman request https://bitimax-api.onrender.com/api/products/policy --script-post-request @postman/tests/public-policy.js`.
 - Production build checks all routes and TypeScript.
 
 Browser visual verification requires a connected browser; HTTP tests do not establish visual correctness. Provider test payment and real money payment are separate from local regression coverage.

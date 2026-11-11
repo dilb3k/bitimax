@@ -220,9 +220,10 @@ sellerHandler.action(/^listing_cancel_do_([a-f0-9]{24})$/, async ctx => {
   await showMyListings(ctx, 1, true);
 });
 
-sellerHandler.hears(["📊 Statistika","Statistika"], async (ctx) => {
+sellerHandler.hears(["📊 Statistika","Statistika"], async (ctx, next) => {
   const user = await User.findOne({ telegramId: ctx.from!.id });
-  if (!user || user.role === 'admin') return; // admin has its own stats screen
+  if (!user) return;
+  if (user.role === 'admin') return next(); // admin has its own stats screen (adminHandler)
 
   const products = await marketplace.getUserProducts(user._id.toString());
   const activeCount = products.filter((p) => p.status === 'active').length;

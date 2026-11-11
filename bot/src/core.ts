@@ -44,6 +44,7 @@ export {
   escapeHtml,
   formatUzs,
   formatDeadline,
+  formatDateTime,
   formatCardNumber,
   formatDealCode,
   isValidUzCard,

@@ -39,7 +39,7 @@ async function main() {
   const { AuditLog } = await import("../models/AuditLog");
   const dbName = `web_test_${Date.now()}`;
   await mongoose.connect(
-    `mongodb://127.0.0.1:27919/${dbName}?replicaSet=tezchecktest`,
+    `mongodb://127.0.0.1:27919/${dbName}?replicaSet=bitimaxtest`,
   );
   await Promise.all([
     Product.init(),

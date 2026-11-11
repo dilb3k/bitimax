@@ -12,6 +12,8 @@ import {
   generateDealCode,
   normalizeDealCode,
   formatDealCode,
+  formatDateTime,
+  formatDeadline,
 } from './helpers';
 
 test('parses the amount out of real-world UZS bank SMS shapes', () => {
@@ -126,4 +128,11 @@ test('user text cannot inject markup into a Telegram HTML message', () => {
     escapeHtml('<b>bold</b> & <script>alert(1)</script>'),
     '&lt;b&gt;bold&lt;/b&gt; &amp; &lt;script&gt;alert(1)&lt;/script&gt;'
   );
+});
+
+test('dates are shown in Tashkent time regardless of the server clock', () => {
+  // 12:00 UTC is 17:00 in Tashkent (UTC+5, no DST).
+  const noonUtc = new Date('2026-11-11T12:00:00Z');
+  assert.match(formatDateTime(noonUtc), /17[:.]00/);
+  assert.match(formatDeadline(noonUtc), /17[:.]00/);
 });

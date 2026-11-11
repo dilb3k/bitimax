@@ -18,6 +18,10 @@ Uch qism, uchalasi **alohida** joylashtiriladi:
 | `SESSION_SECRET`, `WEBHOOK_SECRET`, `INTERNAL_API_KEY` | ✅ | ❌ | | Faqat API. Bot ularni olmaydi |
 | `WEB_PROXY_KEY` | ✅ | | ✅ | API va saytda **bir xil**. Qo'yilgach `/api/me` va `/api/auth` saytdan boshqaga yopiladi |
 | `BACKEND_URL` | | | ✅ | `https://<bitimax-api>.onrender.com` |
+| `NEXT_PUBLIC_BOT_USERNAME`, `NEXT_PUBLIC_SITE_URL` | | | ✅ | Bot havolasi va sayt manzili (build vaqtida) |
+| `DEMO_PAYMENTS` | ✅ | ✅ | | **Ikkalasida bir xil**. Quyidagi "Demo rejim" bo‘limiga qarang |
+| `PAYOUT_CARD_COOLDOWN_HOURS` | ✅ | ✅ | | Yangi karta saqlangandan keyin necha soat yechib bo‘lmaydi (standart 24) |
+| `TEST_AUTO_CONFIRM_ADMIN` | ✅ | ✅ | | Faqat sinov uchun; productionda `false` |
 | `SERVICE_ROLE=bot` | | ✅ | | Botni "kam huquqli" rejimga o'tkazadi |
 
 ## Xavfsizlik qoidalari (kodda majburlangan)
@@ -34,12 +38,19 @@ Uch qism, uchalasi **alohida** joylashtiriladi:
 
 1. `render.yaml` ni Render Blueprint sifatida import qiling yoki ikkita web service qo'lda yarating (`rootDir: backend` va `rootDir: bot`, build `npm ci --include=dev && npm run build`, start `npm start`).
 2. Sirlarni yuqoridagi jadval bo'yicha kiriting.
-3. Vercel: `BACKEND_URL` va `WEB_PROXY_KEY` ni qo'ying, redeploy.
+3. Vercel (loyiha Git bilan bog'lanmagan, deploy qo'lda): `web/` ichida `BACKEND_URL`, `WEB_PROXY_KEY`, `NEXT_PUBLIC_BOT_USERNAME` ni qo'ying va `vercel deploy --prod` qiling. Funksiyalar `web/vercel.json` bilan `fra1` (Frankfurt) regioniga qadalgan: backend ham Frankfurtda, aks holda har so'rov okeandan o'tadi.
+   `WEB_PROXY_KEY` Renderda `sync: false`, ya'ni dashboardda qo'lda kiritiladi; ikki tomonda bir xil bo'lishi shart.
 4. Hamyon dashboard: `prepare_url=https://<api>/api/payments/hamyon/prepare`, `complete_url=https://<api>/api/payments/hamyon/complete`.
 5. Bot webhook'ni o'zi ro'yxatdan o'tkazadi (`RENDER_EXTERNAL_URL/telegram/webhook`).
 6. Tekshiruv: `GET <api>/health`, `GET <bot>/health`, botga `/start`.
 
 Free planda servislar uxlaydi: Telegram webhook botni uyg'otadi, lekin API'dagi scheduler (to'lov muddati / avto-release) uyqu paytida to'xtaydi — jiddiy ishga tushirishda `starter` planga o'ting.
+
+## Demo rejim (`DEMO_PAYMENTS`)
+
+`DEMO_PAYMENTS=true` bo'lsa, "To'lash" bosilishi bilan buyurtma darrov to'langan hisoblanadi (haqiqiy pul yo'q): escrow va ledger oddiy to'lovdagi kod bilan to'ldiriladi, faqat bank kirimi simulyatsiya qilinadi. **Pul yechish (payout) bu rejimda yopiq**, chunki soxta balansni haqiqiy pulga aylantirib bo'lmaydi. `render.yaml` hozir uni ikkala servis uchun `true` qiladi.
+
+Haqiqiy to'lovga qaytish: ikkala servisda `DEMO_PAYMENTS` ni `false` qiling yoki o'chiring (ikkalasida bir xil bo'lsin). Hamyon kodi o'zgartirilmagan.
 
 ## 0. Deploydan OLDIN: sirlarni rotatsiya qiling
 

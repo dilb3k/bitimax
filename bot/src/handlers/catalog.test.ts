@@ -24,3 +24,9 @@ test('ordinary six-letter menu labels continue to menu handlers', async () => {
     assert.equal(continued, true);
   }
 });
+
+test('a password starting with # inside a wizard reaches the form step', async () => {
+  let continued = false;
+  await listingLookup({ message: { text: '#Abc123' }, session: { __scenes: { current: 'seller_create' } } }, async () => { continued = true; });
+  assert.equal(continued, true);
+});

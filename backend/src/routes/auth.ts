@@ -113,17 +113,23 @@ router.get('/poll', pollLimiter, async (req: Request, res: Response) => {
 
 /** Ends every session of this account, not just the calling browser's. */
 router.post('/logout', requireSession, async (req: Request, res: Response) => {
-  const user = (req as AuthedRequest).authUser;
-  user.webSessionsValidFrom = new Date();
-  await user.save();
-  await audit({
-    actorId: user._id as any,
-    actorTelegramId: user.telegramId,
-    action: 'web.logout_all',
-    targetType: 'User',
-    targetId: user._id as any,
-  });
-  res.json({ ok: true });
+  try {
+    const user = (req as AuthedRequest).authUser;
+    user.webSessionsValidFrom = new Date();
+    await user.save();
+    await audit({
+      actorId: user._id as any,
+      actorTelegramId: user.telegramId,
+      action: 'web.logout_all',
+      targetType: 'User',
+      targetId: user._id as any,
+    });
+    res.json({ ok: true });
+  } catch (error: any) {
+    // Express 4 does not catch async errors: without this the request hangs.
+    console.error('[Auth] logout failed:', error);
+    res.status(500).json({ error: 'Chiqishni yakunlab bo‘lmadi' });
+  }
 });
 
 export function publicUser(user: any) {

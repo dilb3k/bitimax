@@ -61,10 +61,12 @@ export async function sendProductDetail(ctx: any, id: string, page = 1, edit = f
 export async function listingLookup(ctx: any, next: () => Promise<void>) {
   const text = ctx.message?.text?.trim();
   if (!text) return next();
-  const explicit = /^\/id(?:@[a-z\d_]+)?(?:\s|$)/i.test(text) || text.startsWith('#');
+  const inWizard = Boolean(ctx.session?.__scenes?.current);
+  // '#123456' is a lookup shortcut outside forms only: inside a wizard a value such as the
+  // password "#Abc123" must reach the form step, so only an explicit /id counts there.
+  const explicit = /^\/id(?:@[a-z\d_]+)?(?:\s|$)/i.test(text) || (!inWizard && text.startsWith('#'));
   // Ordinary menu labels (Balans, Yordam) must never be mistaken for letter-only IDs.
   if (!explicit && !/\d/.test(text)) return next();
-  const inWizard = Boolean(ctx.session?.__scenes?.current);
   if (inWizard && !explicit) return next();
   const code = parseListingCode(text);
   if (!code) {

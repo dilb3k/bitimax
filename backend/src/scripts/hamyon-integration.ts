@@ -1,4 +1,4 @@
-// Local only: mock HamyonAPI provider + isolated Mongo replica set (127.0.0.1:27919, set "tezchecktest").
+// Local only: mock HamyonAPI provider + isolated Mongo replica set (127.0.0.1:27919, set "bitimaxtest").
 // Never contacts the real provider and never moves money.
 import assert from 'node:assert/strict';
 import express from 'express';
@@ -35,7 +35,7 @@ async function main() {
   });
   const providerServer = provider.listen(MOCK_PORT, '127.0.0.1');
 
-  await mongoose.connect(`mongodb://127.0.0.1:27919/hamyon_test_${Date.now()}?replicaSet=tezchecktest`);
+  await mongoose.connect(`mongodb://127.0.0.1:27919/hamyon_test_${Date.now()}?replicaSet=bitimaxtest`);
   await Promise.all([Transaction.init(), Product.init(), User.init(), EscrowHold.init(), LedgerEntry.init()]);
   const app = express(); app.use(hamyonWebhook);
   const server = app.listen(0, '127.0.0.1');

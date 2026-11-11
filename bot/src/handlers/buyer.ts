@@ -9,7 +9,7 @@ import { notificationService } from '../core';
 import { paymentService } from '../core';
 import { describeRefundPolicy } from '../core';
 import { config } from '../core';
-import { escapeHtml, formatUzs, formatDeadline, formatCardNumber } from '../core';
+import { escapeHtml, formatUzs, formatDeadline, formatDateTime, formatCardNumber } from '../core';
 import { bailIfCancelled } from '../wizards/guard';
 import { describeError } from '../utils/errors';
 import {
@@ -381,9 +381,9 @@ buyerHandler.hears(["📦 Mening buyurtmalarim","Mening buyurtmalarim","📦 Buy
       `${statusLabel[escrow.status] || escrow.status} <b>${escapeHtml(product?.title || 'Mahsulot')}</b>`,
       '',
       `💰 ${formatUzs(escrow.amount)}`,
-      `🕐 ${new Date(escrow.boughtAt).toLocaleString('uz-UZ')}`,
+      `🕐 ${formatDateTime(escrow.boughtAt)}`,
       escrow.credentialsRevealedAt
-        ? `🔑 Ochilgan: ${new Date(escrow.credentialsRevealedAt).toLocaleString('uz-UZ')}`
+        ? `🔑 Ochilgan: ${formatDateTime(escrow.credentialsRevealedAt)}`
         : `🔒 Ma’lumotlar hali ochilmagan`,
     ].join('\n');
 
@@ -405,7 +405,7 @@ buyerHandler.hears(["📦 Mening buyurtmalarim","Mening buyurtmalarim","📦 Buy
         `${label} <b>${escapeHtml(product?.title || 'Mahsulot')}</b>`,
         '',
         `💰 ${formatUzs(t.uniqueAmount)}`,
-        `🕐 ${new Date(t.createdAt).toLocaleString('uz-UZ')}`,
+        `🕐 ${formatDateTime(t.createdAt)}`,
         t.status === 'expired'
           ? `<i>Vaqt tugagani uchun bandlik bekor qilindi. Pulingiz o‘tkazilmagan bo‘lsa xavfsiz.</i>`
           : `<i>Ko‘rsatilgan summani o‘tkazing — tasdiqlangach xabar keladi.</i>`,

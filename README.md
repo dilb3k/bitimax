@@ -30,13 +30,13 @@ Bitimax/
 ```bash
 # 1) backend
 cd backend && cp .env.example .env && npm ci && npm run dev      # :3001
-# 2) bot (long polling, BOT_TOKEN kerak)
+# 2) bot (lokal: long polling, production: webhook; BOT_TOKEN kerak)
 cd bot && cp .env.example .env && npm ci && npm run dev           # :3002
 # 3) web
 cd web && cp .env.example .env.local && npm ci && npm run dev    # :3000
 ```
 
 Testlar: `cd backend && npm test` · `cd bot && npm test` · `cd web && npm test` ·
-integratsiya: `npm run e2e` (backend, replica-set Mongo kerak) va `npm run test:marketplace` (bot).
+integratsiya: `npm run e2e` va `npm run test:demo` (backend, replica-set Mongo kerak), `npm run test:marketplace` (bot).
 
 Deploy va xavfsizlik: [`docs/DEPLOY.md`](docs/DEPLOY.md).

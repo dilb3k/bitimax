@@ -4,7 +4,7 @@ import { User } from '../models/User';
 import { audit } from '../models/AuditLog';
 import { ledgerService, accounts } from './ledgerService';
 import { encryptSecret, decryptSecret } from '../utils/crypto';
-import { maskCard, isValidUzCard } from '../utils/helpers';
+import { maskCard, isValidUzCard, formatDateTime } from '../utils/helpers';
 import { config } from '../config';
 
 export class InsufficientBalanceError extends Error {
@@ -27,6 +27,18 @@ export class PayoutService {
   async setPayoutCard(userId: string, cardNumber: string, holder: string) {
     if (!isValidUzCard(cardNumber)) {
       throw new Error('Karta raqami 16 xonali bo‘lishi kerak');
+    }
+
+    // Re-saving the same card (the listing wizard does it on every publish) must not touch
+    // `updatedAt`, or every new listing would restart the payout cooldown.
+    const current = await User.findById(userId);
+    const digits = cardNumber.replace(/\D/g, '');
+    if (current?.payoutCard?.encrypted && current.payoutCard.holder === holder) {
+      try {
+        if (decryptSecret(current.payoutCard.encrypted) === digits) return current;
+      } catch {
+        // unreadable ciphertext: fall through and overwrite with a fresh one
+      }
     }
 
     const user = await User.findByIdAndUpdate(
@@ -78,7 +90,7 @@ export class PayoutService {
       const readyAt = new Date(cardChangedAt + cooldownMs);
       throw new Error(
         `Xavfsizlik uchun yangi karta saqlangandan keyin ${config.payoutCardCooldownHours} soat yechib bo‘lmaydi. ` +
-          `Yechish ${readyAt.toLocaleString('uz-UZ')} dan keyin mumkin.`
+          `Yechish ${formatDateTime(readyAt)} dan keyin mumkin.`
       );
     }
 

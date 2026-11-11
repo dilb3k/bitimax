@@ -54,6 +54,10 @@ services:
       # false) to go back to real HamyonAPI payments; the real payment code is untouched.
       - key: DEMO_PAYMENTS
         value: true
+      - key: TEST_AUTO_CONFIRM_ADMIN
+        value: false
+      - key: PAYOUT_CARD_COOLDOWN_HOURS
+        value: 24
       - key: PAYMENT_PROVIDER
         value: hamyon
       - key: HAMYON_BASE_URL
@@ -134,6 +138,10 @@ services:
       # false) to go back to real HamyonAPI payments; the real payment code is untouched.
       - key: DEMO_PAYMENTS
         value: true
+      - key: TEST_AUTO_CONFIRM_ADMIN
+        value: false
+      - key: PAYOUT_CARD_COOLDOWN_HOURS
+        value: 24
       - key: PAYMENT_PROVIDER
         value: hamyon
       - key: HAMYON_BASE_URL

@@ -10,3 +10,6 @@ dist/
 *.tsbuildinfo
 .claude/
 backup-*/
+
+# Playwright MCP debug output
+.playwright-mcp/

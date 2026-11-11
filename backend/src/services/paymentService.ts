@@ -500,26 +500,41 @@ export class PaymentService {
     if (!product) throw new Error('Product not found');
 
     const credentials = product.getCredentials();
-    const firstReveal = !hold.credentialsRevealedAt;
 
-    if (firstReveal) {
-      const revealedAt = new Date();
-      hold.credentialsRevealedAt = revealedAt;
-      hold.autoReleaseAt = new Date(revealedAt.getTime() + config.autoReleaseHours * 3600_000);
-      hold.refundDeadlineAt = refundDeadlineFrom(revealedAt);
+    // Conditional updates, not `hold.save()`: a refund or release may have settled the hold since
+    // the read above, and a blind save would hand the buyer the credentials AND their money.
+    const revealedAt = new Date();
+    let updated = await EscrowHold.findOneAndUpdate(
+      { _id: hold._id, status: 'holding', credentialsRevealedAt: { $exists: false } },
+      {
+        $set: {
+          credentialsRevealedAt: revealedAt,
+          autoReleaseAt: new Date(revealedAt.getTime() + config.autoReleaseHours * 3600_000),
+          refundDeadlineAt: refundDeadlineFrom(revealedAt),
+        },
+        $inc: { credentialRevealCount: 1 },
+      },
+      { new: true }
+    );
+    const firstReveal = Boolean(updated);
+    if (!updated) {
+      updated = await EscrowHold.findOneAndUpdate(
+        { _id: hold._id, status: 'holding' },
+        { $inc: { credentialRevealCount: 1 } },
+        { new: true }
+      );
     }
-    hold.credentialRevealCount += 1;
-    await hold.save();
+    if (!updated) throw new AlreadyProcessedError('Bu buyurtma yopilgan, ma’lumotlar mavjud emas');
 
     await audit({
-      actorId: hold.buyerId,
+      actorId: updated.buyerId,
       action: 'escrow.credentials_revealed',
       targetType: 'EscrowHold',
-      targetId: hold._id as mongoose.Types.ObjectId,
-      after: { firstReveal, count: hold.credentialRevealCount },
+      targetId: updated._id as mongoose.Types.ObjectId,
+      after: { firstReveal, count: updated.credentialRevealCount },
     });
 
-    return { credentials, hold, firstReveal };
+    return { credentials, hold: updated, firstReveal };
   }
 
   /** What a refund would pay right now, without moving anything. Drives the confirm screen. */
@@ -600,7 +615,8 @@ export class PaymentService {
       claimFilter: opts.onlyIfUnrevealed ? { credentialsRevealedAt: { $exists: false } } : undefined,
     });
 
-    await this.recordBuyerRefund(String(existing.buyerId));
+    // Counts toward the abuse threshold only when the buyer asked for it, not for auto-refunds.
+    if (actorId) await this.recordBuyerRefund(String(existing.buyerId));
 
     return {
       allowed: true,
@@ -744,7 +760,9 @@ export class PaymentService {
         }
         if (opts.ledgerType === 'escrow_release') {
           await User.findByIdAndUpdate(escrow.sellerId, { $inc: { 'sellerStats.sold': 1 } }, { session });
-        } else {
+        } else if (opts.actorId) {
+          // Only a refund the buyer asked for counts against the seller; the scheduler's
+          // "never opened" auto-refund says nothing about the seller.
           await User.findByIdAndUpdate(
             escrow.sellerId,
             { $inc: { 'sellerStats.refunded': 1 } },
