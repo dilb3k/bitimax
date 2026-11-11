@@ -23,6 +23,16 @@ import {
 export const sellerHandler = new Composer();
 
 const SELLER_WIZARD = 'seller_create';
+/** Shown wherever the seller types a price, so the fee is never a surprise at payout time. */
+function commissionNotice(): string {
+  const example = 100_000;
+  const fee = Math.round((example * config.platformCommission) / 100);
+  return (
+    `⚠️ <b>Komissiya: ${config.platformCommission}%</b> — bitim yakunlangach sotuvchi olgan summadan ushlab qolinadi.\n` +
+    `<i>Masalan: ${formatUzs(example)} narxdan ${formatUzs(fee)} komissiya, siz ${formatUzs(example - fee)} olasiz.</i>`
+  );
+}
+
 export const DEAL_WIZARD = 'deal_create';
 
 /** Curated taxonomy. Free-text categories in v1 meant "Instagram", "instagram" and
@@ -322,7 +332,13 @@ export function createDealWizard() {
       ctx.session.dealData.title = text;
 
       await ctx.replyWithHTML(
-        [`<b>🤝 2/4 — Narx</b>`, '', `Kelishilgan summani so‘mda kiriting (faqat raqam):`].join('\n')
+        [
+          `<b>🤝 2/4 — Narx</b>`,
+          '',
+          `Kelishilgan summani so‘mda kiriting (faqat raqam):`,
+          '',
+          commissionNotice(),
+        ].join('\n')
       );
       return ctx.wizard.next();
     },
@@ -539,7 +555,7 @@ export function createSellerWizard() {
       }
       ctx.session.productData.description = text.slice(0, 4000);
       await ctx.replyWithHTML(
-        `<b>3. Narx</b>\n\nNarxni so‘mda kiriting (faqat raqam, masalan: 250000):`
+        `<b>3. Narx</b>\n\nNarxni so‘mda kiriting (faqat raqam, masalan: 250000):\n\n${commissionNotice()}`
       );
       return ctx.wizard.next();
     },
